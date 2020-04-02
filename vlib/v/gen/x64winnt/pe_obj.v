@@ -1,3 +1,3 @@
-module x64-win10
+module x64winnt
 
 #include <winnt.h>
