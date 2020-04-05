@@ -19,7 +19,10 @@ Type | AsCast | TypeOf | StringInterLiteral
 pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt |
 ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt |
 HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt |
-LineComment | MultiLineComment | AssertStmt | UnsafeStmt | GoStmt | Block | InterfaceDecl
+Comment | AssertStmt | UnsafeStmt | GoStmt | Block | InterfaceDecl
+
+pub type ScopeObject = ConstField | GlobalDecl | Var
+
 // pub type Type = StructType | ArrayType
 // pub struct StructType {
 // fields []Field
@@ -99,36 +102,53 @@ pub:
 	expr Expr
 }
 
+pub struct StructField {
+pub:
+	name string
+	pos token.Position
+	comment Comment
+	default_expr Expr
+mut:
+	typ table.Type
+}
+
 pub struct Field {
 pub:
 	name string
 	// type_idx int
 	pos token.Position
-	already_reported bool
 mut:
 	typ  table.Type
 	// typ2 Type
 }
 
+pub struct ConstField {
+pub:
+	name   string
+	expr   Expr
+	is_pub bool
+	pos    token.Position
+mut:
+	typ    table.Type
+}
+
 pub struct ConstDecl {
 pub:
-	pos    token.Position
-	fields []Field
-	exprs  []Expr
+	fields []ConstField
 	is_pub bool
+	pos    token.Position
 }
 
 pub struct StructDecl {
 pub:
 	pos           token.Position
 	name          string
-	fields        []Field
+	fields        []StructField
 	is_pub        bool
 	mut_pos       int // mut:
 	pub_pos       int // pub:
 	pub_mut_pos   int // pub mut:
 	is_c          bool
-	default_exprs []Expr
 }
 
 pub struct InterfaceDecl {
@@ -184,10 +204,11 @@ pub:
 	pos           token.Position
 	left          Expr // `user` in `user.register()`
 	is_method     bool
+	mod           string
 mut:
 	name          string
 	args          []CallArg
-	exp_arg_types []table.Type
+	expected_arg_types []table.Type
 	is_c          bool
 	or_block      OrExpr
 	// has_or_block bool
@@ -252,6 +273,9 @@ pub:
 	imports []Import
 	stmts   []Stmt
 	scope   &Scope
+	// TODO: consider parent instead of field
+	global_scope &Scope
+	//comments []Comment
 }
 
 pub struct IdentFn {
@@ -274,6 +298,7 @@ pub enum IdentKind {
 	blank_ident
 	variable
 	constant
+	global
 	function
 }
 
@@ -283,6 +308,7 @@ pub:
 	value    string
 	is_c     bool
 	tok_kind token.Kind
+	mod      string
 	pos      token.Position
 mut:
 	name     string
@@ -335,7 +361,7 @@ pub:
 	left           Expr
 	index          Expr // [0], [start..end] etc
 mut:
-	container_type table.Type // array, map, fixed array
+	left_type table.Type // array, map, fixed array
 	is_setter      bool
 }
 
@@ -545,7 +571,7 @@ mut:
 
 pub struct GoStmt {
 pub:
-	expr Expr
+	call_expr Expr
 }
 
 pub struct GotoLabel {
@@ -643,14 +669,12 @@ mut:
 	expr_type table.Type
 }
 
-pub struct LineComment {
+pub struct Comment {
 pub:
 	text string
-}
-
-pub struct MultiLineComment {
-pub:
-	text string
+	is_multi bool
+	line_nr int
+	pos token.Position
 }
 
 pub struct ConcatExpr {

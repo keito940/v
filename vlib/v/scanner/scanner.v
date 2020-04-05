@@ -13,9 +13,8 @@ import (
 const (
 	single_quote = `\'`
 	double_quote = `"`
-	error_context_before = 2 // how many lines of source context to print before the pointer line
-	error_context_after = 2 // ^^^ same, but after
-	is_fmt = os.getenv('VEXE').contains('vfmt')
+	//is_fmt = os.getenv('VEXE').contains('vfmt')
+	is_fmt = os.executable().contains('vfmt')
 	num_sep = `_` // char used as number separator
 )
 
@@ -744,8 +743,8 @@ pub fn (s mut Scanner) scan() token.Token {
 					// on the next line
 					s.pos--
 					// println("'" + s.text[s.pos].str() + "'")
-					// s.line_nr--
-					return s.new_token(.line_comment, comment)
+					s.line_nr--
+					return s.new_token(.comment, comment)
 				}
 				// s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
 				// Skip the comment (return the next token)
@@ -777,7 +776,7 @@ pub fn (s mut Scanner) scan() token.Token {
 				s.pos++
 				if s.comments_mode == .parse_comments {
 					comment := s.text[start..(s.pos - 1)].trim_space()
-					return s.new_token(.mline_comment, comment)
+					return s.new_token(.comment, comment)
 				}
 				// Skip if not in fmt mode
 				return s.scan()
@@ -1027,9 +1026,7 @@ pub fn (s &Scanner) error(msg string) {
 }
 
 pub fn verror(s string) {
-	println('V error: $s')
-	os.flush()
-	exit(1)
+	util.verror('scanner error', s)
 }
 
 pub fn cescaped_path(s string) string {
