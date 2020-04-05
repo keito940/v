@@ -1,9 +1,16 @@
 module x64winnt
 
+#flag -lws2_32
+#include <winnt.h>
+
 const (
 	machine_invalid = 0xffff
 	machine_type = 0x8664
 )
+
+struct ImageNtHeaders64 {
+	Signature u32
+}
 
 struct Pe64Header {
 	machine u16
@@ -16,12 +23,7 @@ struct Object {
 	is_pe bool
 }
 
-struct DosHeader{
-	magic u16
-	used_bytes u16
-	file_size u16
-}
-
 struct BigObjectHeader{
 
 }
+
