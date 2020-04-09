@@ -4,10 +4,6 @@ import (
 	time
 )
 
-const (
-	NULL = 0
-)
-
 pub type Object = Integer | Float | TimeStamp | Map | Sequence | String |
 
 pub struct Key {
