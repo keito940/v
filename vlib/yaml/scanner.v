@@ -1,5 +1,11 @@
 module yaml
 
+struct YamlMark {
+	index int
+	line int
+	column int
+}
+
 struct Scanner{
 	text 			string
 	pos				int
