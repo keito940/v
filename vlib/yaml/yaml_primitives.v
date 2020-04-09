@@ -8,9 +8,12 @@ const (
 	NULL = 0
 )
 
-struct Data{
-	squences 	&[]Squence
-	maps		&[]Mapping
+pub type Object = Integer | Float | TimeStamp | Map | Sequence | String |
+
+pub struct Key {
+mut:
+	key string
+	val Object
 }
 
 struct YamlVersion {
@@ -37,26 +40,23 @@ enum YamlBreak {
 	crlf // CR+LF line breaks.
 }
 
-struct YamlVal{
-	mut:
-	integer YAMLInt
-	str string
-	boolean bool
-	squence Squence
+pub struct Integer {
+mut:
+	value int
 }
 
-struct YAMLInt{
-
+pub struct Float {
+mut:
+	value f64
 }
 
-struct Squence{
-	val YAMLVal
+pub struct Sequence{
+mut:
+	values []Object
 }
 
-struct Mapping{
-	val YAMLVal
-}
-
-struct TimeStamp{
-	
+struct Map{
+mut:
+	keys []string
+	values []Object
 }
