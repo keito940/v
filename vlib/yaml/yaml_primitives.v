@@ -12,16 +12,6 @@ mut:
 	val Object
 }
 
-struct YamlVersion {
-	major i8 // major version number.
-	minor i8 // minor version number.
-}
-
-struct YamlTagDirective {
-	handle []byte // tag handle
-	prefix []byte // tag prefix.
-}
-
 enum YamlEncodeing {
 	any
 	utf8
@@ -51,7 +41,7 @@ mut:
 	values []Object
 }
 
-struct Map{
+struct Map {
 mut:
 	keys []string
 	values []Object

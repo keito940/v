@@ -1,14 +1,13 @@
 module yaml
 
-
-struct VersionDriective{
-	major i8
-	minor i8
+struct YamlVersion {
+	major i8 // major version number.
+	minor i8 // minor version number.
 }
 
-struct TagDirective{
-	handle []byte
-	prefix []byte
+struct YamlTagDirective {
+	handle []byte // tag handle
+	prefix []byte // tag prefix.
 }
 
 enum EventKind{
