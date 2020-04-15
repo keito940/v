@@ -1,10 +1,19 @@
 module yaml
 
 import (
+	json
 	time
 )
 
-pub type Object = Integer | Float | TimeStamp | Map | Sequence | String |
+pub type Object = Integer | Float | TimeStamp | Map | Sequence | String | Json |
+
+pub fn decode() ?voidptr{
+	return 0
+}
+
+pub fn encode(x voidptr) string{
+	return ''
+}
 
 pub struct Key {
 mut:
@@ -36,12 +45,16 @@ mut:
 	value f64
 }
 
+pub struct TimeStamp {
+	
+}
+
 pub struct Sequence{
 mut:
 	values []Object
 }
 
-struct Map {
+pub struct Map {
 mut:
 	keys []string
 	values []Object
