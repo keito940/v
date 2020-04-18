@@ -16,7 +16,7 @@ pub fn encode(x voidptr) string{
 }
 
 pub struct Key {
-mut:
+var:
 	key string
 	val Object
 }
@@ -36,21 +36,22 @@ enum YamlBreak {
 }
 
 pub struct Integer {
-mut:
+var:
 	value int
 }
 
 pub struct Float {
-mut:
+var:
 	value f64
 }
 
 pub struct TimeStamp {
-	
+var:
+	value time	
 }
 
 pub struct Sequence{
-mut:
+var:
 	values []Object
 }
 

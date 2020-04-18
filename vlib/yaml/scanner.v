@@ -7,6 +7,7 @@ struct YamlMark {
 }
 
 struct Scanner{
+var:
 	text 			string
 	pos				int
 	last_nl_pos		int

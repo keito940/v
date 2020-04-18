@@ -2,6 +2,6 @@ module yaml
 
 struct Parser{
 	scanner &scanner.Scanner
-mut:
+var:
 	tok token.token
 }
