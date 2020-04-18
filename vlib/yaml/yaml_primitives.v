@@ -1,9 +1,7 @@
 module yaml
 
-import (
-	json
-	time
-)
+import json
+import time
 
 pub type Object = Integer | Float | TimeStamp | Map | Sequence | String | Json |
 
