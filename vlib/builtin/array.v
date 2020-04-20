@@ -3,24 +3,18 @@
 // that can be found in the LICENSE file.
 module builtin
 
-import strings
+import (
+	strings
+)
 
 pub struct array {
 pub:
-// Using a void pointer allows to implement arrays without generics and without generating
+	data         voidptr// Using a void pointer allows to implement arrays without generics and without generating
 // extra code for every type.
-	data         voidptr
 	len          int
 	cap          int
 	element_size int
 }
-
-/*
-struct Foo {
-	a []string
-	b [][]string
-}
-*/
 
 // Internal function, used by V (`nums := []int`)
 fn new_array(mylen int, cap int, elm_size int) array {
@@ -34,14 +28,26 @@ fn new_array(mylen int, cap int, elm_size int) array {
 	return arr
 }
 
+fn __new_array(mylen int, cap int, elm_size int) array {
+	return new_array(mylen, cap, elm_size)
+}
+
 // TODO
 pub fn make(len int, cap int, elm_size int) array {
 	return new_array(len, cap, elm_size)
 }
 
+/*
+struct Foo {
+	a []string
+	b [][]string
+}
+*/
+
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
 	cap_ := if cap == 0 { 1 } else { cap }
+
 	arr := array{
 		len: len
 		cap: cap
@@ -98,7 +104,7 @@ pub fn (a array) repeat(count int) array {
 		data: vcalloc(size)
 	}
 	for i in 0..count {
-		C.memcpy(arr.data + i * a.len * a.element_size, a.data, a.len * a.element_size)
+		C.memcpy(byteptr(arr.data) + i * a.len * a.element_size, byteptr(a.data), a.len * a.element_size)
 	}
 	return arr
 }
@@ -122,8 +128,8 @@ pub fn (a mut array) insert(i int, val voidptr) {
 	}
 	a.ensure_cap(a.len + 1)
 	size := a.element_size
-	C.memmove(a.data + (i + 1) * size, a.data + i * size, (a.len - i) * size)
-	C.memcpy(a.data + i * size, val, size)
+	C.memmove(byteptr(a.data) + (i + 1) * size, byteptr(a.data) + i * size, (a.len - i) * size)
+	C.memcpy(byteptr(a.data) + i * size, val, size)
 	a.len++
 }
 
@@ -142,7 +148,7 @@ pub fn (a mut array) delete(i int) {
 		}
 	}
 	size := a.element_size
-	C.memmove(a.data + i * size, a.data + (i + 1) * size, (a.len - i) * size)
+	C.memmove(byteptr(a.data) + i * size, byteptr(a.data) + (i + 1) * size, (a.len - i) * size)
 	a.len--
 }
 
@@ -166,7 +172,7 @@ fn (a array) get(i int) voidptr {
 			panic('array.get: index out of range (i == $i, a.len == $a.len)')
 		}
 	}
-	return a.data + i * a.element_size
+	return byteptr(a.data) + i * a.element_size
 }
 
 // array.first returns the first element of the array
@@ -176,7 +182,7 @@ pub fn (a array) first() voidptr {
 			panic('array.first: array is empty')
 		}
 	}
-	return a.data + 0
+	return a.data
 }
 
 // array.last returns the last element of the array
@@ -186,7 +192,7 @@ pub fn (a array) last() voidptr {
 			panic('array.last: array is empty')
 		}
 	}
-	return a.data + (a.len - 1) * a.element_size
+	return byteptr(a.data) + (a.len - 1) * a.element_size
 }
 
 /*
@@ -241,7 +247,7 @@ fn (a array) slice(start, _end int) array {
 	l := end - start
 	res := array{
 		element_size: a.element_size
-		data: a.data + start * a.element_size
+		data: byteptr(a.data) + start * a.element_size
 		len: l
 		cap: l
 	}
@@ -266,7 +272,7 @@ pub fn (a &array) clone() array {
 		element_size: a.element_size
 		data: vcalloc(size)
 	}
-	C.memcpy(arr.data, a.data, a.cap * a.element_size)
+	C.memcpy(byteptr(arr.data), a.data, a.cap * a.element_size)
 	return arr
 }
 
@@ -286,7 +292,7 @@ fn (a &array) slice_clone(start, _end int) array {
 	l := end - start
 	res := array{
 		element_size: a.element_size
-		data: a.data + start * a.element_size
+		data: byteptr(a.data) + start * a.element_size
 		len: l
 		cap: l
 	}
@@ -300,12 +306,12 @@ fn (a mut array) set(i int, val voidptr) {
 			panic('array.set: index out of range (i == $i, a.len == $a.len)')
 		}
 	}
-	C.memcpy(a.data + a.element_size * i, val, a.element_size)
+	C.memcpy(byteptr(a.data) + a.element_size * i, val, a.element_size)
 }
 
 fn (a mut array) push(val voidptr) {
 	a.ensure_cap(a.len + 1)
-	C.memcpy(a.data + a.element_size * a.len, val, a.element_size)
+	C.memcpy(byteptr(a.data) + a.element_size * a.len, val, a.element_size)
 	a.len++
 }
 
@@ -317,10 +323,10 @@ pub fn (a3 mut array) push_many(val voidptr, size int) {
 		copy := a3.clone()
 		a3.ensure_cap(a3.len + size)
 		//C.memcpy(a.data, copy.data, copy.element_size * copy.len)
-		C.memcpy(a3.data + a3.element_size * a3.len, copy.data, a3.element_size * size)
+		C.memcpy(byteptr(a3.data) + a3.element_size * a3.len, copy.data, a3.element_size * size)
 	} else {
 		a3.ensure_cap(a3.len + size)
-		C.memcpy(a3.data + a3.element_size * a3.len, val, a3.element_size * size)
+		C.memcpy(byteptr(a3.data) + a3.element_size * a3.len, val, a3.element_size * size)
 	}
 	a3.len += size
 }
@@ -338,7 +344,8 @@ pub fn (a array) reverse() array {
 		data: vcalloc(a.cap * a.element_size)
 	}
 	for i in 0..a.len {
-		C.memcpy(arr.data + i * arr.element_size, &a[a.len - 1 - i], arr.element_size)
+		//C.memcpy(arr.data + i * arr.element_size, &a[a.len - 1 - i], arr.element_size)
+		C.memcpy(byteptr(arr.data) + i * arr.element_size, byteptr(a.data) + (a.len - 1 - i) * arr.element_size, arr.element_size)
 	}
 	return arr
 }
@@ -370,49 +377,13 @@ pub fn (a []string) str() string {
 	return sb.str()
 }
 
-// []int.str returns a string representation of the array of ints
-// => '[1, 2, 3]'
-pub fn (a []int) str() string {
-	mut sb := strings.new_builder(a.len * 13)
-	sb.write('[')
-	for i in 0..a.len {
-		sb.write(a[i].str())
-		if i < a.len - 1 {
-			sb.write(', ')
-		}
-	}
-	sb.write(']')
-	return sb.str()
-}
-
-// []bool.str returns a string representation of the array of bools
-// => '[true, true, false]'
-pub fn (a []bool) str() string {
-	mut sb := strings.new_builder(a.len * 3)
-	sb.write('[')
-	for i in 0..a.len {
-		val := a[i]
-		if val {
-			sb.write('true')
-		}
-		else {
-			sb.write('false')
-		}
-		if i < a.len - 1 {
-			sb.write(', ')
-		}
-	}
-	sb.write(']')
-	return sb.str()
-}
-
 // []byte.hex returns a string with the hexadecimal representation
 // of the byte elements of the array
 pub fn (b []byte) hex() string {
 	mut hex := malloc(b.len * 2 + 1)
 	mut dst_i := 0
 	for i in b {
-		n0 := i >> 4 
+		n0 := i >> 4
 		hex[dst_i++] = if n0 < 10 { n0 + `0` } else { n0 + 87 }
 		n1 := i & 0xF
 		hex[dst_i++] = if n1 < 10 { n1 + `0` } else { n1 + 87 }
@@ -429,7 +400,7 @@ pub fn copy(dst, src []byte) int {
 	if dst.len > 0 && src.len > 0 {
 		mut min := 0
 		min = if dst.len < src.len { dst.len } else { src.len }
-		C.memcpy(dst.data, src[..min].data, dst.element_size * min)
+		C.memcpy(byteptr(dst.data), src[..min].data, dst.element_size * min)
 		return min
 	}
 	return 0
@@ -499,12 +470,12 @@ pub fn (a []char) index(v char) int {
 // []int.reduce executes a given reducer function on each element of the array,
 // resulting in a single output value.
 pub fn (a []int) reduce(iter fn(accum, curr int)int, accum_start int) int {
-	mut _accum := accum_start
+	mut accum_ := accum_start
 	for i in a {
-		_accum = iter(_accum, i)
+		accum_ = iter(accum_, i)
 	}
 
-	return _accum
+	return accum_
 }
 
 // array_eq<T> checks if two arrays contain all the same elements in the same order.
@@ -600,7 +571,7 @@ pub fn compare_f32(a, b &f32) int {
 pub fn (a array) pointers() []voidptr {
 	mut res := []voidptr
 	for i in 0..a.len {
-		res << a.data + i * a.element_size
+		res << byteptr(a.data) + i * a.element_size
 	}
 	return res
 }

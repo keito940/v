@@ -1,0 +1,5 @@
+println(a)
+===output===
+.vrepl.v:2:20: error: undefined: `a` 
+    1| 
+    2| println(a)

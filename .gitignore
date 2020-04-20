@@ -27,6 +27,7 @@ fns.txt
 /cmd/tools/vtest
 /cmd/tools/vtest-compiler
 /cmd/tools/vtest-fmt
+/cmd/tools/vtest-fixed
 /cmd/tools/vfmt
 /cmd/tools/vbin2v
 /cmd/tools/vup
@@ -66,6 +67,11 @@ info.log
 # vim/emacs editor backup files
 *~
 
+# vim gitignore
+*.swp
+*.swo
+*.swn
+
 thirdparty/freetype/
 thirdparty/sdl2/
 thirdparty/SDL2_image/
@@ -75,3 +81,10 @@ thirdparty/SDL2_ttf/
 cachegrind.out.*
 
 .gdb_history
+/thirdparty/pg
+exe
+vlib/v/tests/inout/*.v
+!vlib/v/tests/inout/*_test.v
+vlib/v/checker/tests/inout/*.v
+vlib/v/checker/tests/inout/*.c
+!vlib/v/checker/tests/inout/*_test.v

@@ -5,6 +5,7 @@ module x64
 
 import (
 	v.ast
+	v.util
 	// term
 )
 
@@ -45,7 +46,7 @@ pub fn gen(files []ast.File, out_name string) {
 	mut g := Gen{
 		sect_header_name_pos: 0
 		// buf: []
-		
+
 		out_name: out_name
 	}
 	g.generate_elf_header()
@@ -236,10 +237,15 @@ pub fn (g mut Gen) save_main_fn_addr() {
 	g.main_fn_addr = g.buf.len
 }
 
-pub fn (g mut Gen) gen_print_from_expr(expr ast.Expr) {
+pub fn (g mut Gen) gen_print_from_expr(expr ast.Expr, newline bool) {
 	match expr {
 		ast.StringLiteral {
-			g.gen_print(it.val)
+			if newline {
+				g.gen_print(it.val+'\n')
+			}
+			else {
+				g.gen_print(it.val)
+			}
 		}
 		else {}
 	}
@@ -360,9 +366,9 @@ fn (g mut Gen) expr(node ast.Expr) {
 		// `user := User{name: 'Bob'}`
 		ast.StructInit {}
 		ast.CallExpr {
-			if it.name == 'println' || it.name == 'print' {
-				expr := it.args[0]
-				g.gen_print_from_expr(expr)
+			if it.name in ['println', 'print', 'eprintln', 'eprint'] {
+				expr := it.args[0].expr
+				g.gen_print_from_expr(expr, it.name in ['println', 'eprintln'])
 			}
 			/*
 			g.write('${it.name}(')
@@ -382,11 +388,10 @@ fn (g mut Gen) expr(node ast.Expr) {
 		ast.IfExpr {}
 		else {
 			// println(term.red('x64.expr(): bad node'))
-			}
+		}
 	}
-	}
+}
 
-	fn verror(s string) {
-		println(s)
-		exit(1)
-	}
+fn verror(s string) {
+	util.verror('x64 gen error', s)
+}

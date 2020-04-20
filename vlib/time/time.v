@@ -30,7 +30,7 @@ pub:
 	hour   int
 	minute int
 	second int
-	unix int
+	unix   u64
 }
 
 pub enum FormatTime {
@@ -60,7 +60,8 @@ pub enum FormatDelimiter {
 	space
 }
 
-pub struct C.time_t {}
+// TODO: C.time_t. works in v2
+type time_t voidptr
 
 pub struct C.timeval {
 	tv_sec  u64
@@ -69,7 +70,7 @@ pub struct C.timeval {
 
 fn C.localtime(int) &C.tm
 
-fn C.time(int) C.time_t
+fn C.time(int) time_t
 
 // now returns current local time.
 pub fn now() Time {
@@ -94,17 +95,17 @@ pub fn new_time(t Time) Time {
 		hour: t.hour
 		minute: t.minute
 		second: t.second
-		unix: t.calc_unix()
+		unix: t.unix_time()
 	}
 	// TODO Use the syntax below when it works with reserved keywords like `unix`
 	// return {
 	// 	t |
-	// 	unix:t.calc_unix()
+	// 	unix:t.unix_time()
 	// }
 }
 
-// calc_unix returns Unix time.
-pub fn (t &Time) calc_unix() int {
+// unix_time returns Unix time.
+pub fn (t Time) unix_time() int {
 	if t.unix != 0 {
 		return t.unix
 	}
@@ -171,7 +172,7 @@ pub fn day_of_week(y, m, d int) int {
 	// https://stackoverflow.com/a/6385934
 	t := [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
 	mut sy := y
-	if (m < 3) {
+	if m < 3 {
 		sy = sy - 1
 	}
 	return (sy + sy / 4 - sy / 100 + sy / 400 + t[m - 1] + d - 1) % 7 + 1

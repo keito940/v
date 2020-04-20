@@ -52,7 +52,7 @@ fn (b mut BenchedTests) testing_step_end() {
 	// ////////////////////////////////////////////////////////////////
 	if ok_diff == 0 && fail_diff == 0 {
 		b.bench.neither_fail_nor_ok()
-		println(INNER_INDENT + b.bench.step_message_ok('NO asserts | ') + b.fn_name())
+		println(INNER_INDENT + b.bench.step_message_ok('   NO asserts | ') + b.fn_name())
 		return
 	}
 	// ////////////////////////////////////////////////////////////////
@@ -80,25 +80,13 @@ fn (b &BenchedTests) fn_name() string {
 // Called at the end of the test program produced by `v -stats file_test.v`
 fn (b mut BenchedTests) end_testing() {
 	b.bench.stop()
-	println(INNER_INDENT + b.bench.total_message('running V tests in "' + os.filename(b.test_suit_file) + '"'))
+	println(INNER_INDENT + b.bench.total_message('running V tests in "' + os.file_name(b.test_suit_file) + '"'))
 }
 
 // ///////////////////////////////////////////////////////////////////
 fn nasserts(n int) string {
-	if n == 0 {
-		return '${n:2d} asserts | '
-	}
 	if n == 1 {
-		return '${n:2d} assert  | '
-	}
-	if n < 10 {
-		return '${n:2d} asserts | '
-	}
-	if n < 100 {
-		return '${n:3d} asserts | '
-	}
-	if n < 1000 {
-		return '${n:4d} asserts | '
+		return '${n:5d} assert  | '
 	}
 	return '${n:5d} asserts | '
 }

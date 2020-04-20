@@ -64,7 +64,7 @@ pub fn (nn int) str_l(max int) string {
 		return '0'
 	}
 	mut buf := malloc(max + 1)
-	
+
 	mut is_neg := false
 	if n < 0 {
 		n = -n
@@ -77,11 +77,11 @@ pub fn (nn int) str_l(max int) string {
 		n1 := n / 100
 		d = ((n - (n1 * 100)) << 1)
 		n = n1
-		buf[index--] = digit_pairs[d++]
-		buf[index--] = digit_pairs[d]
+		buf[index--] = digit_pairs.str[d++]
+		buf[index--] = digit_pairs.str[d]
 	}
 	index++
-	
+
 	// remove head zero
 	if d < 20 {
 		index++
@@ -92,8 +92,10 @@ pub fn (nn int) str_l(max int) string {
 		index--
 		buf[index] = `-`
 	}
-	
-	return tos(buf + index, (max-index))
+
+	C.memmove(buf,buf+index, (max-index)+1 )
+	return tos(buf, (max-index))
+	//return tos(buf + index, (max-index))
 }
 
 pub fn (n i8) str() string {
@@ -120,7 +122,7 @@ pub fn (nn u32) str() string {
 	}
 	max := 12
 	mut buf := malloc(max + 1)
-	
+
 	mut index := max
 	buf[index--] = `\0`
 	for n > 0 {
@@ -131,13 +133,15 @@ pub fn (nn u32) str() string {
 		buf[index--] = digit_pairs[d]
 	}
 	index++
-	
+
 	// remove head zero
 	if d < u32(20) {
 		index++
 	}
-	
-	return tos(buf + index, (max-index))
+
+	C.memmove(buf,buf+index, (max-index)+1 )
+	return tos(buf, (max-index))
+	//return tos(buf + index, (max-index))
 }
 
 pub fn (nn i64) str() string {
@@ -148,7 +152,7 @@ pub fn (nn i64) str() string {
 	}
 	max := 20
 	mut buf := vcalloc(max + 1)
-	
+
 	mut is_neg := false
 	if n < 0 {
 		n = -n
@@ -165,7 +169,7 @@ pub fn (nn i64) str() string {
 		buf[index--] = digit_pairs[d]
 	}
 	index++
-	
+
 	// remove head zero
 	if d < i64(20) {
 		index++
@@ -177,7 +181,9 @@ pub fn (nn i64) str() string {
 		buf[index] = `-`
 	}
 
-	return tos(buf + index, (max-index))
+	C.memmove(buf,buf+index, (max-index)+1 )
+	return tos(buf, (max-index))
+	//return tos(buf + index, (max-index))
 }
 
 pub fn (nn u64) str() string {
@@ -188,7 +194,7 @@ pub fn (nn u64) str() string {
 	}
 	max := 20
 	mut buf := vcalloc(max + 1)
-	
+
 	mut index := max
 	buf[index--] = `\0`
 	for n > 0 {
@@ -199,13 +205,15 @@ pub fn (nn u64) str() string {
 		buf[index--] = digit_pairs[d]
 	}
 	index++
-	
+
 	// remove head zero
 	if d < 20 {
 		index++
 	}
 
-	return tos(buf + index, (max-index))
+	C.memmove(buf,buf+index, (max-index)+1 )
+	return tos(buf, (max-index))
+	//return tos(buf + index, (max-index))
 }
 
 pub fn (b bool) str() string {
@@ -227,8 +235,66 @@ pub fn (n int) hex1() string {
 }
 */
 
-pub fn (nn int) hex() string {
-	mut n := u32(nn)
+pub fn (nn byte) hex() string {
+	if nn == 0 {
+		return '0'
+	}
+
+	mut n := nn
+	max := 2
+	mut buf := malloc(max + 1)
+
+	mut index := max
+	buf[index--] = `\0`
+	for n > 0 {
+		d := n & 0xF
+		n = n >> 4
+		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
+	}
+	//buf[index--] = `x`
+	//buf[index]   = `0`
+	index++
+
+	return tos(buf + index, (max - index))
+}
+
+pub fn (nn i8) hex() string {
+	return byte(nn).hex()
+}
+
+pub fn (nn u16) hex() string {
+	if nn == 0 {
+		return '0'
+	}
+	
+	mut n := nn
+	max := 5
+	mut buf := malloc(max + 1)
+
+	mut index := max
+	buf[index--] = `\0`
+	for n > 0 {
+		d := n & 0xF
+		n = n >> 4
+		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
+	}
+	//buf[index--] = `x`
+	//buf[index]   = `0`
+	index++
+
+	return tos(buf + index, (max - index))
+}
+
+pub fn (nn i16) hex() string {
+	return u16(nn).hex()
+}
+
+pub fn (nn u32) hex() string {
+	if nn == 0 {
+		return '0'
+	}
+
+	mut n := nn
 	max := 10
 	mut buf := malloc(max + 1)
 
@@ -246,7 +312,15 @@ pub fn (nn int) hex() string {
 	return tos(buf + index, (max - index))
 }
 
+pub fn (nn int) hex() string {
+	return u32(nn).hex()
+}
+
 pub fn (nn u64) hex() string {
+	if nn == 0 {
+		return '0'
+	}
+	
 	mut n := nn
 	max := 18
 	mut buf := malloc(max + 1)
@@ -262,12 +336,13 @@ pub fn (nn u64) hex() string {
 	//buf[index]   = `0`
 	index++
 
-	return tos(buf + index, (max-index))
+	C.memmove(buf,buf+index, (max-index)+1 )
+	return tos(buf, (max-index))
+	//return tos(buf + index, (max-index))
 }
 
 pub fn (nn i64) hex() string {
-	mut n := u64(nn)
-	return n.hex()
+	return u64(nn).hex()
 }
 
 // ----- utilities functions -----

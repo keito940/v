@@ -1,0 +1,7 @@
+module main
+
+fn main() {
+  mut a := 'aa'
+  a += x('a','b')
+  mut b := 'abcdef'
+}

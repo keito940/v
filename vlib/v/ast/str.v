@@ -2,29 +2,41 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
-/*
-These methods are used only by vfmt, vdoc, and for debugging.
-*/
 
-
-import (
-	v.table
-	strings
-)
+// These methods are used only by vfmt, vdoc, and for debugging.
+import v.table
+import strings
 
 pub fn (node &FnDecl) str(t &table.Table) string {
-	mut f := strings.new_builder(30)
+	var f := strings.new_builder(30)
 	if node.is_pub {
 		f.write('pub ')
 	}
-	mut receiver := ''
+	var receiver := ''
 	if node.is_method {
+		var styp := t.type_to_str(node.receiver.typ)
+		var m := if node.rec_mut { 'var ' } else { '' }
+		if node.rec_mut {
+			styp = styp[1..]			// remove &
+		}
+		receiver = '($m$node.receiver.name $styp) '
+		/*
 		sym := t.get_type_symbol(node.receiver.typ)
 		name := sym.name.after('.')
-		m := if node.rec_mut { 'mut ' } else { '' }
+		mut m := if node.rec_mut { 'mut ' } else { '' }
+		if !node.rec_mut && table.type_is_ptr(node.receiver.typ) {
+			m = '&'
+		}
 		receiver = '($node.receiver.name $m$name) '
+*/
 	}
-	name := node.name.after('.')
+	var name := node.name.after('.')
+	if node.is_c {
+		name = 'C.$name'
+	}
+	if node.is_js {
+		name = 'JS.$name'
+	}
 	f.write('fn ${receiver}${name}(')
 	for i, arg in node.args {
 		// skip receiver
@@ -32,15 +44,21 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 			continue
 		}
 		is_last_arg := i == node.args.len - 1
-		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ ||
-									(node.is_variadic && i == node.args.len - 2)
+		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ || (node.is_variadic &&
+			i == node.args.len - 2)
 		f.write(arg.name)
+		var s := t.type_to_str(arg.typ)
+		if arg.is_mut {
+			f.write(' mut')
+			if s.starts_with('&') {
+				s = s[1..]
+			}
+		}
 		if should_add_type {
 			if node.is_variadic && is_last_arg {
-				f.write(' ...' + t.type_to_str(arg.typ))
-			}
-			else {
-				f.write(' ' + t.type_to_str(arg.typ))
+				f.write(' ...' + s)
+			} else {
+				f.write(' ' + s)
 			}
 		}
 		if !is_last_arg {
@@ -59,45 +77,115 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 // string representaiton of expr
 pub fn (x Expr) str() string {
 	match x {
+		Ident {
+			return it.name
+		}
 		InfixExpr {
-			return '(${it.left.str()} $it.op.str() ${it.right.str()})'
+			return '${it.left.str()} $it.op.str() ${it.right.str()}'
 		}
-		/*
 		PrefixExpr {
-			return it.left.str() + it.op.str()
+			return it.op.str() + it.right.str()
 		}
-		*/
-
-		IntegerLiteral {
-			return it.val.str()
+		CharLiteral {
+			return '`$it.val`'
 		}
 		IntegerLiteral {
+			return it.val
+		}
+		FloatLiteral {
+			return it.val
+		}
+		StringLiteral {
 			return '"$it.val"'
 		}
+		StringInterLiteral {
+			res := []string
+			res << "'"
+			for i, val in it.vals {
+				res << val
+				if i >= it.exprs.len {
+					continue
+				}
+				res << '$'
+				if it.expr_fmts[i].len > 0 {
+					res << '{'
+					res << it.exprs[i].str()
+					res << it.expr_fmts[i]
+					res << '}'
+				} else {
+					res << it.exprs[i].str()
+				}
+			}
+			res << "'"
+			return res.join('')
+		}
+		BoolLiteral {
+			return it.val.str()
+		}
+		ParExpr {
+			return it.expr.str()
+		}
+		IndexExpr {
+			return '${it.left.str()}[${it.index.str()}]'
+		}
+		CastExpr {
+			return '${it.typname}(${it.expr.str()})'
+		}
+		SelectorExpr {
+			return '${it.expr.str()}.${it.field}'
+		}
+		TypeOf {
+			return 'typeof(${it.expr.str()})'
+		}
+		EnumVal {
+			return '.${it.val}'
+		}
+		CallExpr {
+			sargs := args2str(it.args)
+			if it.is_method {
+				return '${it.left.str()}.${it.name}($sargs)'
+			}
+			return '${it.mod}.${it.name}($sargs)'
+		}
 		else {
-			return ''
+			return '[unhandled expr type ${typeof(x)}]'
 		}
 	}
+}
+
+pub fn (a CallArg) str() string {
+	if a.is_mut {
+		return 'mut ${a.expr.str()}'
+	}
+	return '${a.expr.str()}'
+}
+
+pub fn args2str(args []CallArg) string {
+	var res := []string
+	for a in args {
+		res << a.str()
+	}
+	return res.join(', ')
 }
 
 pub fn (node Stmt) str() string {
 	match node {
 		AssignStmt {
-			mut out := ''
-			for i,ident in it.left {
+			var out := ''
+			for i, ident in it.left {
 				var_info := ident.var_info()
 				if var_info.is_mut {
 					out += 'mut '
 				}
 				out += ident.name
-				if i < it.left.len-1 {
+				if i < it.left.len - 1 {
 					out += ','
 				}
 			}
 			out += ' $it.op.str() '
-			for i,val in it.right {
+			for i, val in it.right {
 				out += val.str()
-				if i < it.right.len-1 {
+				if i < it.right.len - 1 {
 					out += ','
 				}
 			}
@@ -110,7 +198,7 @@ pub fn (node Stmt) str() string {
 			return 'fn ${it.name}() { $it.stmts.len stmts }'
 		}
 		else {
-			return '[unhandled stmt str]'
+			return '[unhandled stmt str type: ${typeof(node)} ]'
 		}
 	}
 }

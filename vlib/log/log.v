@@ -6,7 +6,7 @@ import (
 	term
 )
 
-pub enum LogLevel {
+pub enum Level {
 	fatal = 1
 	error
 	warn
@@ -14,7 +14,7 @@ pub enum LogLevel {
 	debug
 }
 
-fn tag(l LogLevel) string {
+fn tag(l Level) string {
 	return match l {
 		.fatal { term.red('FATAL') }
 		.error { term.red('ERROR') }
@@ -24,14 +24,6 @@ fn tag(l LogLevel) string {
 		else { '     ' }
 	}
 }
-
-pub const (
-	FATAL = 1
-	ERROR = 2
-	WARN  = 3
-	INFO  = 4
-	DEBUG = 5
-)
 
 interface Logger {
 	fatal(s string)
@@ -43,7 +35,7 @@ interface Logger {
 
 pub struct Log {
 mut:
-	level            LogLevel
+	level            Level
 	output_label     string
 	ofile            os.File
 	output_to_file   bool
@@ -51,24 +43,17 @@ pub mut:
 	output_file_name string
 }
 
-pub fn (l mut Log) set_level(level int) {
-	l.level = match level {
-		FATAL { LogLevel.fatal }
-		ERROR { LogLevel.error }
-		WARN { LogLevel.warn }
-		INFO { LogLevel.info }
-		DEBUG { LogLevel.debug }
-		else { .debug }
-	}
+pub fn (l mut Log) set_level(level Level) {
+	l.level = level
 }
 
-pub fn (l mut Log) set_output_level(level LogLevel) {
+pub fn (l mut Log) set_output_level(level Level) {
 	l.level = level
 }
 
 pub fn (l mut Log) set_full_logpath(full_log_path string) {
-	rlog_file := os.realpath( full_log_path )
-	l.set_output_label( os.filename( rlog_file ) )
+	rlog_file := os.real_path( full_log_path )
+	l.set_output_label( os.file_name( rlog_file ) )
 	l.set_output_path( os.base_dir( rlog_file ) )
 }
 
@@ -79,7 +64,7 @@ pub fn (l mut Log) set_output_label(label string){
 pub fn (l mut Log) set_output_path(output_file_path string) {
 	if l.ofile.is_opened() { l.ofile.close() }
 	l.output_to_file = true
-	l.output_file_name = os.join_path( os.realpath( output_file_path ) , l.output_label )
+	l.output_file_name = os.join_path( os.real_path( output_file_path ) , l.output_label )
 	ofile := os.open_append( l.output_file_name ) or {
 		panic('error while opening log file ${l.output_file_name} for appending')
 	}
@@ -90,19 +75,19 @@ pub fn (l mut Log) close() {
   l.ofile.close()
 }
 
-fn (l mut Log) log_file(s string, level LogLevel) {
+fn (l mut Log) log_file(s string, level Level) {
 	timestamp := time.now().format_ss()
 	e := tag(level)
 	l.ofile.writeln('$timestamp [$e] $s')
 }
 
-fn (l &Log) log_cli(s string, level LogLevel) {
+fn (l &Log) log_cli(s string, level Level) {
 	f := tag(level)
 	t := time.now()
 	println('[$f ${t.format_ss()}] $s')
 }
 
-fn (l mut Log) send_output(s &string, level LogLevel) {
+fn (l mut Log) send_output(s &string, level Level) {
 	if l.output_to_file {
 		l.log_file(s, level)
 	} else {

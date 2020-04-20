@@ -11,9 +11,51 @@ module gl
 // joe-c: fix & remove
 pub enum TmpGlImportHack{ non_empty }
 
+fn C.gladLoadGL() int
+
+fn C.glDisable()
+fn C.glEnable()
+fn C.glScissor()
+fn C.glVertexAttribPointer()
+fn C.glGenBuffers()
+fn C.glEnableVertexAttribArray()
+fn C.glGenVertexArrays()
+fn C.glDrawElements()
+fn C.glUseProgram()
+fn C.glDrawArrays()
+fn C.glBufferData()
+fn C.glGenerateMipmap()
+fn C.glTexParameteri()
+fn C.glDeleteTextures()
+fn C.glBindTexture()
+fn C.glActiveTexture()
+fn C.glGenTextures()
+fn C.glBindBuffer()
+fn C.glBindVertexArray()
+fn C.glGetProgramInfoLog()
+fn C.glGetShaderInfoLog()
+fn C.glDeleteShader()
+fn C.glGetProgramiv()
+fn C.glLinkProgram()
+fn C.glAttachShader()
+fn C.glGetShaderiv()
+fn C.glCompileShader()
+fn C.glShaderSource()
+fn C.glCreateProgram() int
+fn C.glClear()
+fn C.glCreateShader() int
+fn C.glClearColor()
+fn C.glViewport()
+fn C.glTexImage2D()
+fn C.glPixelStorei()
+fn C.glBlendFunc()
+fn C.glPolygonMode()
+fn C.glDeleteBuffers()
+
+
 pub fn init_glad() {
 	ok := C.gladLoadGL()
-	if isnil(ok) {
+	if ok == 0 {
 		println('Failed to initialize glad OpenGL context')
 		exit(1)
 	}

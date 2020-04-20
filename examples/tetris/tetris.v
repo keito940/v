@@ -13,10 +13,19 @@ import math
 import freetype
 
 const (
+	k_up = glfw.key_up
+	k_left = glfw.key_left
+	k_right = glfw.key_right
+	k_down = glfw.key_down
+	k_escape = glfw.key_escape
+	k_space = glfw.key_space
+)
+
+const (
 	BlockSize = 20 // pixels
 	FieldHeight = 20 // # of blocks
 	FieldWidth = 10
-	TetroSize = 4
+	tetro_size = 4
 	WinWidth = BlockSize * FieldWidth
 	WinHeight = BlockSize * FieldHeight
 	TimerPeriod = 250 // ms
@@ -26,12 +35,12 @@ const (
 
 const (
 	text_cfg = gx.TextCfg{
-		align:gx.ALIGN_LEFT
+		align:gx.align_left
 		size:TextSize
 		color:gx.rgb(0, 0, 0)
 	}
 	over_cfg = gx.TextCfg{
-		align:gx.ALIGN_LEFT
+		align:gx.align_left
 		size:TextSize
 		color:gx.White
 	}
@@ -39,7 +48,7 @@ const (
 
 const (
 	// Tetros' 4 possible states are encoded in binaries
-	BTetros = [
+	b_tetros = [
 		// 0000 0
 		// 0000 0
 		// 0110 6
@@ -91,7 +100,7 @@ const (
 	UIColor = gx.Red
 )
 
-// TODO: type Tetro [TetroSize]struct{ x, y int }
+// TODO: type Tetro [tetro_size]struct{ x, y int }
 struct Block {
 	mut:
 	x int
@@ -134,16 +143,17 @@ struct Game {
 
 fn main() {
 	glfw.init_glfw()
-	mut game := &Game{
-		gg: gg.new_context(gg.Cfg {
+
+	gconfig := gg.Cfg {
 			width: WinWidth
 			height: WinHeight
 			use_ortho: true // This is needed for 2D drawing
 			create_window: true
 			window_title: 'V Tetris'
-			window_user_ptr: game
-		})
-		ft: freetype.new_context(gg.Cfg{
+			//window_user_ptr: game
+	}
+
+	fconfig := gg.Cfg{
 			width: WinWidth
 			height: WinHeight
 			use_ortho: true
@@ -151,7 +161,10 @@ fn main() {
 			font_size: 18
 			scale: 2
 			window_user_ptr: 0
-		})
+	}
+	mut game := &Game{
+		gg: gg.new_context(gconfig)
+		ft: freetype.new_context(fconfig)
 	}
 	game.gg.window.set_user_ptr(game) // TODO remove this when `window_user_ptr:` works
 	game.init_game()
@@ -193,8 +206,8 @@ fn (g mut Game) init_game() {
 }
 
 fn (g mut Game) parse_tetros() {
-	for b_tetros in BTetros {
-		for b_tetro in b_tetros {
+	for b_tetros0 in b_tetros {
+		for b_tetro in b_tetros0 {
 			for t in parse_binary_tetro(b_tetro) {
 				g.tetros_cache << t
 			}
@@ -239,7 +252,7 @@ fn (g mut Game) move_tetro() {
 
 fn (g mut Game) move_right(dx int) bool {
 	// Reached left/right edge or another tetro?
-	for i in 0..TetroSize {
+	for i in 0..tetro_size {
 		tetro := g.tetro[i]
 		y := tetro.y + g.pos_y
 		x := tetro.x + g.pos_x + dx
@@ -280,21 +293,21 @@ fn (g mut Game) delete_completed_line(y int) {
 // Place a new tetro on top
 fn (g mut Game) generate_tetro() {
 	g.pos_y = 0
-	g.pos_x = FieldWidth / 2 - TetroSize / 2
-	g.tetro_idx = rand.next(BTetros.len)
+	g.pos_x = FieldWidth / 2 - tetro_size / 2
+	g.tetro_idx = rand.next(b_tetros.len)
 	g.rotation_idx = 0
 	g.get_tetro()
 }
 
 // Get the right tetro from cache
 fn (g mut Game) get_tetro() {
-	idx := g.tetro_idx * TetroSize * TetroSize + g.rotation_idx * TetroSize
-	g.tetro = g.tetros_cache[idx..idx+TetroSize]
+	idx := g.tetro_idx * tetro_size * tetro_size + g.rotation_idx * tetro_size
+	g.tetro = g.tetros_cache[idx..idx+tetro_size]
 }
 
 // TODO mut
 fn (g &Game) drop_tetro() {
-	for i in 0..TetroSize {
+	for i in 0..tetro_size{
 		tetro := g.tetro[i]
 		x := tetro.x + g.pos_x
 		y := tetro.y + g.pos_y
@@ -306,7 +319,7 @@ fn (g &Game) drop_tetro() {
 }
 
 fn (g &Game) draw_tetro() {
-	for i in 0..TetroSize {
+	for i in 0..tetro_size {
 		tetro := g.tetro[i]
 		g.draw_block(g.pos_y + tetro.y, g.pos_x + tetro.x, g.tetro_idx + 1)
 	}
@@ -367,7 +380,7 @@ fn parse_binary_tetro(t_ int) []Block {
 		for j := 3; j >= 0; j-- {
 			bin := digit % 2
 			digit /= 2
-			if bin == 1 || (horizontal && i == TetroSize - 1) {
+			if bin == 1 || (horizontal && i == tetro_size - 1) {
 				// TODO: res[cnt].x = j
 				// res[cnt].y = i
 				mut point := &res[cnt]
@@ -389,10 +402,10 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 	mut game := &Game(glfw.get_window_user_pointer(wnd))
 	// global keys
 	match key {
-		glfw.KEY_ESCAPE {
+		k_escape {
 			glfw.set_should_close(wnd, true)
 		}
-		glfw.key_space {
+		k_space {
 			if game.state == .running {
 				game.state = .paused
 			} else if game.state == .paused {
@@ -410,31 +423,31 @@ fn key_down(wnd voidptr, key, code, action, mods int) {
 	}
 	// keys while game is running
 	match key {
-	glfw.KeyUp {
-		// Rotate the tetro
-		old_rotation_idx := game.rotation_idx
-		game.rotation_idx++
-		if game.rotation_idx == TetroSize {
-			game.rotation_idx = 0
-		}
-		game.get_tetro()
-		if !game.move_right(0) {
-			game.rotation_idx = old_rotation_idx
+		k_up {
+			// Rotate the tetro
+			old_rotation_idx := game.rotation_idx
+			game.rotation_idx++
+			if game.rotation_idx == tetro_size {
+				game.rotation_idx = 0
+			}
 			game.get_tetro()
+			if !game.move_right(0) {
+				game.rotation_idx = old_rotation_idx
+				game.get_tetro()
+			}
+			if game.pos_x < 0 {
+				//game.pos_x = 1
+			}
 		}
-		if game.pos_x < 0 {
-			//game.pos_x = 1
+		k_left {
+			game.move_right(-1)
 		}
-	}
-	glfw.KeyLeft {
-		game.move_right(-1)
-	}
-	glfw.KeyRight {
-		game.move_right(1)
-	}
-	glfw.KeyDown {
-		game.move_tetro() // drop faster when the player presses <down>
-	}
-	else { }
+		k_right {
+			game.move_right(1)
+		}
+		k_down {
+			game.move_tetro() // drop faster when the player presses <down>
+		}
+		else { }
 	}
 }

@@ -23,7 +23,7 @@ module strconv
 union Float64u {
 mut:
 	f f64
-	u u64 = u64(0)
+	u u64
 }
 
 /**********************************************************************
@@ -102,9 +102,9 @@ const (
 //
 	DIGITS = 18
 	DOUBLE_PLUS_ZERO = u64(0x0000000000000000)
-	DOUBLE_MINUS_ZERO = 0x8000000000000000
-	DOUBLE_PLUS_INFINITY = 0x7FF0000000000000
-	DOUBLE_MINUS_INFINITY = 0xFFF0000000000000
+	DOUBLE_MINUS_ZERO = u64(0x8000000000000000)
+	DOUBLE_PLUS_INFINITY = u64(0x7FF0000000000000)
+	DOUBLE_MINUS_INFINITY = u64(0xFFF0000000000000)
 	//
 	// parser state machine states
 	//
@@ -165,9 +165,9 @@ fn is_exp(x byte) bool {
 // The structure is filled by parser, then given to converter.
 pub struct PrepNumber {
 pub mut:
-	negative bool=false // 0 if positive number, 1 if negative
-	exponent int=0 // power of 10 exponent
-	mantissa u64=u64(0) // integer mantissa
+	negative bool // 0 if positive number, 1 if negative
+	exponent int // power of 10 exponent
+	mantissa u64 // integer mantissa
 }
 /**********************************************************************
 *
@@ -334,7 +334,7 @@ fn parser(s string) (int,PrepNumber) {
 			result = parser_pzero
 		}
 	}
-	else if (pn.exponent > 309) {
+	else if pn.exponent > 309 {
 		if pn.negative {
 			result = parser_minf
 		}

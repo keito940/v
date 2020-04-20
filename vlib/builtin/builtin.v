@@ -6,15 +6,6 @@ module builtin
 __global g_m2_buf byteptr
 __global g_m2_ptr byteptr
 
-fn init() {
-	$if windows {
-		if is_atty(1) > 0 {
-			C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // ENABLE_VIRTUAL_TERMINAL_PROCESSING
-			C.setbuf(C.stdout, 0)
-		}
-	}
-}
-
 pub fn exit(code int) {
 	C.exit(code)
 }
@@ -160,9 +151,10 @@ TODO
 */
 
 }
+
 pub fn v_calloc(n int) byteptr {
 	return C.calloc(n, 1)
-	}
+}
 
 pub fn vcalloc(n int) byteptr {
 	if n <= 0 {
@@ -177,6 +169,9 @@ pub fn free(ptr voidptr) {
 }
 
 pub fn memdup(src voidptr, sz int) voidptr {
+	if sz == 0 {
+		return vcalloc(1)
+	}
 	mem := malloc(sz)
 	return C.memcpy(mem, src, sz)
 }
@@ -195,28 +190,3 @@ pub fn is_atty(fd int) int {
 		return C.isatty(fd)
 	}
 }
-
-/*
-fn C.va_start()
-fn C.va_end()
-fn C.vsnprintf() int
-fn C.vsprintf() int
-
-pub fn str2_(fmt charptr, ...) string {
-       argptr := C.va_list{}
-        C.va_start(argptr, fmt)
-        len := C.vsnprintf(0, 0, fmt, argptr) + 1
-C.va_end(argptr)
-        buf := malloc(len)
-        C.va_start(argptr, fmt)
-        C.vsprintf(charptr(buf), fmt, argptr)
-        C.va_end(argptr)
-//#ifdef DEBUG_ALLOC
-//        puts("_STR:");
-//        puts(buf);
-//#endif
-        return tos2(buf)
-}
-*/
-
-

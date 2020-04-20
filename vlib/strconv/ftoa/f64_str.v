@@ -1,6 +1,6 @@
 /**********************************************************************
 *
-* f32 to string 
+* f32 to string
 *
 * Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
 * Use of this source code is governed by an MIT license
@@ -9,11 +9,11 @@
 * This file contains the f64 to string functions
 *
 * These functions are based on the work of:
-* Publication:PLDI 2018: Proceedings of the 39th ACM SIGPLAN 
-* Conference on Programming Language Design and ImplementationJune 2018 
+* Publication:PLDI 2018: Proceedings of the 39th ACM SIGPLAN
+* Conference on Programming Language Design and ImplementationJune 2018
 * Pages 270–282 https://doi.org/10.1145/3192366.3192369
 *
-* inspired by the Go version here: 
+* inspired by the Go version here:
 * https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
 *
 **********************************************************************/
@@ -28,16 +28,42 @@ mut:
 // dec64 is a floating decimal type representing m * 10^e.
 struct Dec64 {
 mut:
-	m u64 = u64(0)
+	m u64 = 0
 	e int = 0
 }
 
 // support union for convert f64 to u64
 union Uf64 {
 mut:
-	f f64 = f64(0)
+	f f64 = 0
 	u u64
 }
+
+// pow of ten table used by n_digit reduction
+const(
+	ten_pow_table_64 = [
+		u64(1),
+		u64(10),
+		u64(100),
+		u64(1000),
+		u64(10000),
+		u64(100000),
+		u64(1000000),
+		u64(10000000),
+		u64(100000000),
+		u64(1000000000),
+		u64(10000000000),
+		u64(100000000000),
+		u64(1000000000000),
+		u64(10000000000000),
+		u64(100000000000000),
+		u64(1000000000000000),
+		u64(10000000000000000),
+		u64(100000000000000000),
+		u64(1000000000000000000),
+		u64(10000000000000000000),
+	]
+)
 
 /******************************************************************************
 *
@@ -51,16 +77,14 @@ const(
 	maxexp64    = 2047
 )
 
-fn (d Dec64) get_string_64(neg bool, n_digit int) string {
-	mut out         := d.m
-	mut out_len     := decimal_len_64(out)
+fn (d Dec64) get_string_64(neg bool, i_n_digit int) string {
+	n_digit          := i_n_digit + 1
+	mut out          := d.m
+	mut out_len      := decimal_len_64(out)
+	out_len_original := out_len
 
 	mut buf := [byte(0)].repeat(out_len + 6 + 1 +1) // sign + mant_len + . +  e + e_sign + exp_len(2) + \0
 	mut i := 0
-
-	if n_digit > 0 && out_len > n_digit {
-		out_len = n_digit+1
-	}
 
 	if neg {
 		buf[i]=`-`
@@ -72,11 +96,18 @@ fn (d Dec64) get_string_64(neg bool, n_digit int) string {
 		disp = 1
 	}
 
+	if n_digit < out_len {
+		//println("orig: ${out_len_original}")
+		out += ten_pow_table_64[out_len - n_digit] + 1  // round to up
+		out /= ten_pow_table_64[out_len - n_digit]
+		out_len = n_digit
+	}
+
 	y := i + out_len
 	mut x := 0
 	for x < (out_len-disp-1) {
 		buf[y - x] = `0` + byte(out%10)
-		out /= 10 
+		out /= 10
 		i++
 		x++
 	}
@@ -104,7 +135,7 @@ fn (d Dec64) get_string_64(neg bool, n_digit int) string {
 	buf[i]=`e`
 	i++
 
-	mut exp := d.e + out_len - 1
+	mut exp := d.e + out_len_original - 1
 	if exp < 0 {
 		buf[i]=`-`
 		i++
@@ -113,16 +144,6 @@ fn (d Dec64) get_string_64(neg bool, n_digit int) string {
 		buf[i]=`+`
 		i++
 	}
-
-	// Always print two digits to match strconv's formatting.
-/*	d1 := exp % 10
-	d0 := exp / 10
-	buf[i]=`0` + byte(d0)
-	i++
-	buf[i]=`0` + byte(d1)
-	i++
-	buf[i]=0
-*/
 
 	// Always print at least two digits to match strconv's formatting.
 	d2 := exp % 10
@@ -157,7 +178,7 @@ fn f64_to_decimal_exact_int(i_mant u64, exp u64) (Dec64, bool) {
 		return d, false
 	}
 	shift := mantbits64 - e
-	mant  := i_mant | 0x0010_0000_0000_0000 // implicit 1
+	mant  := i_mant | u64(0x0010_0000_0000_0000) // implicit 1
 	//mant  := i_mant | (1 << mantbits64) // implicit 1
 	d.m = mant >> shift
 	if (d.m << shift) != mant {
