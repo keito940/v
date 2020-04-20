@@ -20,6 +20,7 @@ enum TokenKind{
 	comma
 	question
 	hyphen
+	langle
 	rangle
 	vertcal
 	hash
@@ -44,4 +45,8 @@ fn build_token_str() []string{
 	s[Kind.comma] = '.'
 	s[Kind.question] = '?'
 	s[Kind.hyphen] = '-'
+	s[Kind.langle] = '<'
+	s[Kind.rangle] = '>'
+	s[Kind.vertcal] = '|'
+	s[Kind.hash] = '#'
 }

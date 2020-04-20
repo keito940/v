@@ -3,7 +3,7 @@ module yaml
 import json
 import time
 
-pub type Object = Integer | Float | TimeStamp | Map | Sequence | String | Json |
+pub type Object = Integer | Float | TimeStamp | Map | Sequence | String | Json | Nil
 
 pub fn decode() ?voidptr{
 	return 0
@@ -31,6 +31,9 @@ enum YamlBreak {
 	cr // CR for line breaks.
 	lf // LF for line breaks.
 	crlf // CR+LF line breaks.
+}
+
+pub struct Nil{
 }
 
 pub struct Integer {
