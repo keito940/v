@@ -294,6 +294,12 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		if !(right.kind in [.array, .map, .string]) {
 			c.error('`in` can only be used with an array/map/string.', infix_expr.pos)
 		}
+		if right.kind == .array {
+			right_sym := c.table.get_type_symbol(right.array_info().elem_type)
+			if left.kind != .alias && left.kind != right_sym.kind {
+				c.error('the data type on the left of `in` does not match the array item type.', infix_expr.pos)
+			}
+		}
 		return table.bool_type
 	}
 	if !c.table.check(right_type, left_type) {
@@ -303,6 +309,14 @@ pub fn (c mut Checker) infix_expr(infix_expr mut ast.InfixExpr) table.Type {
 		}
 		c.error('infix expr: cannot use `$right.name` (right expression) as `$left.name`',
 			infix_expr.pos)
+	}
+	if infix_expr.op in [.amp, .pipe, .xor] {
+		if !left.is_int() {
+			c.error('operator ${infix_expr.op.str()} not defined on left type `$left.name`', infix_expr.pos)
+		}
+		else if !right.is_int() {
+			c.error('operator ${infix_expr.op.str()} not defined on right type `$right.name`', infix_expr.pos)
+		}
 	}
 	if left_type == table.bool_type && !(infix_expr.op in [.eq, .ne, .logical_or, .and]) {
 		c.error('bool types only have the following operators defined: `==`, `!=`, `||`, and `&&`',
@@ -327,6 +341,8 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 	// println('setting exp type to $c.expected_type $t.name')
 	right_type := c.expr(assign_expr.val)
 	assign_expr.right_type = right_type
+	right := c.table.get_type_symbol(right_type)
+	left := c.table.get_type_symbol(left_type)
 	if ast.expr_is_blank_ident(assign_expr.left) {
 		return
 	}
@@ -335,7 +351,7 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 			scope := c.file.scope.innermost(assign_expr.pos.pos)
 			if v := scope.find_var(it.name) {
 				if !v.is_mut {
-					c.error('`$it.name` is immutable, declare it with `mut`', assign_expr.pos)
+					c.error('`$it.name` is immutable, declare it with `var` to assign to it', assign_expr.pos)
 				}
 			}
 		}
@@ -346,6 +362,37 @@ fn (c mut Checker) assign_expr(assign_expr mut ast.AssignExpr) {
 		right_type_sym := c.table.get_type_symbol(right_type)
 		c.error('cannot assign `$right_type_sym.name` to variable `${assign_expr.left.str()}` of type `$left_type_sym.name`',
 			assign_expr.val.position())
+	}
+	else if assign_expr.op == .plus_assign {
+		no_str_related_err := left_type == table.string_type && right_type == table.string_type
+		no_ptr_related_err := (left.is_pointer() || left.is_int()) && (right.is_pointer() || right.is_int())
+		no_num_related_err := left.is_number() && right.is_number()
+		if !no_str_related_err && !no_ptr_related_err && !no_num_related_err {
+			c.error('operator += not defined on left type `$left.name` and right type `$right.name`', assign_expr.pos)
+		}
+	}
+	else if assign_expr.op == .minus_assign {
+		no_ptr_related_err := (left.is_pointer() || left.is_int()) && (right.is_pointer() || right.is_int())
+		no_num_related_err := left.is_number() && right.is_number()
+		if !no_ptr_related_err && !no_num_related_err {
+			c.error('operator -= not defined on left type `$left.name` and right type `$right.name`', assign_expr.pos)
+		}
+	}
+	else if assign_expr.op in [.mult_assign, .div_assign] {
+		if !left.is_number() {
+			c.error('operator ${assign_expr.op.str()} not defined on left type `$left.name`', assign_expr.pos)
+		}
+		else if !right.is_number() {
+			c.error('operator ${assign_expr.op.str()} not defined on right type `$right.name`', assign_expr.pos)
+		}
+	}
+	else if assign_expr.op in [.and_assign, .or_assign, .xor_assign, .mod_assign, .left_shift_assign, .right_shift_assign] {
+		if !left.is_int() {
+			c.error('operator ${assign_expr.op.str()} not defined on left type `$left.name`', assign_expr.pos)
+		}
+		else if !right.is_int() {
+			c.error('operator ${assign_expr.op.str()} not defined on right type `$right.name`', assign_expr.pos)
+		}
 	}
 	c.check_expr_opt_call(assign_expr.val, right_type, true)
 }
@@ -734,6 +781,12 @@ pub fn (c mut Checker) enum_decl(decl ast.EnumDecl) {
 				ast.IntegerLiteral {}
 				ast.PrefixExpr {}
 				else {
+					if field.expr is ast.Ident {
+						expr := field.expr as ast.Ident
+						if expr.is_c {
+							continue
+						}
+					}
 					mut pos := field.expr.position()
 					if pos.pos == 0 {
 						pos = field.pos
@@ -1052,6 +1105,16 @@ fn (c mut Checker) stmt(node ast.Stmt) {
 			c.in_for_count++
 			typ := c.expr(it.cond)
 			if it.is_range {
+				high_type := c.expr(it.high)
+				if typ in table.integer_type_idxs && high_type !in table.integer_type_idxs {
+					c.error('range types do not match', it.cond.position())
+				} else if typ in table.float_type_idxs || high_type in table.float_type_idxs {
+					c.error('range type can not be float', it.cond.position())
+				} else if typ == table.bool_type_idx || high_type == table.bool_type_idx {
+					c.error('range type can not be bool', it.cond.position())
+				} else if typ == table.string_type_idx || high_type == table.string_type_idx {
+					c.error('range type can not be string', it.cond.position())
+				}
 				c.expr(it.high)
 			} else {
 				mut scope := c.file.scope.innermost(it.pos.pos)
