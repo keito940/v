@@ -3,7 +3,15 @@ module yaml
 import json
 import time
 
-pub type Object = Integer | Float | TimeStamp | Map | Sequence | String | Json | Nil
+pub type Object = Integer | Float | String | TimeStamp | Map | Sequence | String | Json | Nil
+
+pub fn value(o Object){
+	match Object{
+		Integer { it.value() }
+		Float { it.value() }
+		String { it.value() }
+	}
+}
 
 pub fn decode() ?voidptr{
 	return 0
@@ -14,7 +22,7 @@ pub fn encode(x voidptr) string{
 }
 
 pub struct Key {
-var:
+mut:
 	key string
 	val Object
 }
@@ -37,22 +45,39 @@ pub struct Nil{
 }
 
 pub struct Integer {
-var:
-	value int
+mut:
+	value i64
+}
+
+fn (i Integer) value() i64{
+	return value
 }
 
 pub struct Float {
-var:
+mut:
 	value f64
 }
 
+fn (f Float) value() f64{
+	return value
+}
+
+pub struct String {
+mut:
+	value string
+}
+
+fn (s String) value() string{
+	return value
+}
+
 pub struct TimeStamp {
-var:
+mut:
 	value time	
 }
 
 pub struct Sequence{
-var:
+mut:
 	values []Object
 }
 

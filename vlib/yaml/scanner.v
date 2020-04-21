@@ -7,7 +7,7 @@ struct YamlMark {
 }
 
 struct Scanner{
-var:
+mut:
 	text 			string
 	pos				int
 	last_nl_pos		int
@@ -19,4 +19,8 @@ var:
 	table_name		string
 	array_name		string
 	started			bool
+}
+
+pub fn (mut p Scanner) scan(){
+	
 }
