@@ -26,10 +26,10 @@ enum SymbolStorageClass{
 	automatic = 1
 }
 
-pub fn (mut g Gen) generate_pe64_header {
+pub fn (g mut Gen) generate_pe64_header {
 
 }
 
-pub fn (mut g Gen) generate_pe64_footer {
+pub fn (g mut Gen) generate_pe64_footer {
 
 }
