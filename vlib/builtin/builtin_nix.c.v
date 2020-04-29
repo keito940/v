@@ -38,17 +38,7 @@ pub fn println(s string) {
 	C.printf('%.*s\n', s.len, s.str)
 }
 
-fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
-	println('not implemented, see builtin_windows.v')
-	return false
-}
-
-fn print_backtrace_skipping_top_frames_mingw(skipframes int) bool {
-	println('not implemented, see builtin_windows.v')
-	return false
-}
-
-fn print_backtrace_skipping_top_frames_nix(xskipframes int) bool {
+fn print_backtrace_skipping_top_frames(xskipframes int) bool {
 	skipframes := xskipframes + 2
 	$if macos {
 		return print_backtrace_skipping_top_frames_mac(skipframes)
@@ -65,6 +55,7 @@ fn print_backtrace_skipping_top_frames_nix(xskipframes int) bool {
 	$if openbsd {
 		return print_backtrace_skipping_top_frames_freebsd(skipframes)
 	}
+	println('print_backtrace_skipping_top_frames is not implemented')
 	return false
 }
 
@@ -99,7 +90,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 			buffer := [100]byteptr
 			nr_ptrs := backtrace(buffer, 100)
 			nr_actual_frames := nr_ptrs - skipframes
-			mut sframes := []string
+			mut sframes := []string{}
 			//////csymbols := backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
 			csymbols := backtrace_symbols(&buffer[skipframes], nr_actual_frames)
 			for i in 0 .. nr_actual_frames {

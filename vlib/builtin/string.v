@@ -51,7 +51,7 @@ pub:
 	// hash_cache int
 
 pub struct ustring {
-pub:
+pub mut:
 	s     string
 	runes []int
 	len   int
@@ -144,7 +144,7 @@ pub fn (s string) replace(rep, with string) string {
 	}
 	// TODO PERF Allocating ints is expensive. Should be a stack array
 	// Get locations of all reps within this string
-	mut idxs := []int
+	mut idxs := []int{}
 	mut idx := 0
 	for {
 		idx = s.index_after(rep, idx)
@@ -223,7 +223,7 @@ pub fn (s string) replace_each(vals []string) string {
 		return s
 	}
 	if vals.len % 2 != 0 {
-		println('string.replace_many(): odd number of strings')
+		println('string.replace_each(): odd number of strings')
 		return s
 	}
 	// `rep` - string to replace
@@ -231,7 +231,7 @@ pub fn (s string) replace_each(vals []string) string {
 	// Remember positions of all rep strings, and calculate the length
 	// of the new string to do just one allocation.
 	mut new_len := s.len
-	mut idxs := []RepIndex
+	mut idxs := []RepIndex{}
 	mut idx := 0
 	for rep_i := 0; rep_i < vals.len; rep_i += 2 {
 		// vals: ['rep1, 'with1', 'rep2', 'with2']
@@ -333,19 +333,14 @@ pub fn (s string) u64() u64 {
 
 // ==
 fn (s string) eq(a string) bool {
-	if isnil(s.str) {
+	if s.str == 0 {
 		// should never happen
 		panic('string.eq(): nil string')
 	}
 	if s.len != a.len {
 		return false
 	}
-	for i in 0..s.len {
-		if s[i] != a[i] {
-			return false
-		}
-	}
-	return true
+	return C.memcmp(s.str, a.str, a.len) == 0
 }
 
 // !=
@@ -412,7 +407,7 @@ The last returned element has the remainder of the string, even if
 the remainder contains more `delim` substrings.
 */
 pub fn (s string) split_nth(delim string, nth int) []string {
-	mut res := []string
+	mut res := []string{}
 	mut i := 0
 	if delim.len == 0 {
 		i = 1
@@ -463,7 +458,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 }
 
 pub fn (s string) split_into_lines() []string {
-	mut res := []string
+	mut res := []string{}
 	if s.len == 0 {
 		return res
 	}
@@ -793,7 +788,7 @@ pub fn (s string) is_capital() bool {
 
 pub fn (s string) title() string {
 	words := s.split(' ')
-	mut tit := []string
+	mut tit := []string{}
 	for word in words {
 		tit << word.capitalize()
 	}
@@ -837,7 +832,7 @@ fn (ar []string) contains(val string) bool {
 
 // TODO generic
 fn (ar []int) contains(val int) bool {
-	for i, s in ar {
+	for s in ar {
 		if s == val {
 			return true
 		}
@@ -966,7 +961,7 @@ pub fn (s string) ustring() ustring {
 		// runes will have at least s.len elements, save reallocations
 		// TODO use VLA for small strings?
 
-		runes: new_array(0, s.len, sizeof(int))
+		runes: __new_array(0, s.len, sizeof(int))
 	}
 	for i := 0; i < s.len; i++ {
 		char_len := utf8_char_len(s.str[i])
@@ -984,7 +979,7 @@ __global g_ustring_runes []int
 
 pub fn (s string) ustring_tmp() ustring {
 	if g_ustring_runes.len == 0 {
-		g_ustring_runes = new_array(0, 128, sizeof(int))
+		g_ustring_runes = __new_array(0, 128, sizeof(int))
 	}
 	mut res := ustring{
 		s: s
@@ -1032,7 +1027,7 @@ fn (u ustring) ge(a ustring) bool {
 pub fn (u ustring) add(a ustring) ustring {
 	mut res := ustring{
 		s: u.s + a.s
-		runes: new_array(0, u.s.len + a.s.len, sizeof(int))
+		runes: __new_array(0, u.s.len + a.s.len, sizeof(int))
 	}
 	mut j := 0
 	for i := 0; i < u.s.len; i++ {
@@ -1211,7 +1206,7 @@ pub fn (a []string) join(del string) string {
 		return ''
 	}
 	mut len := 0
-	for i, val in a {
+	for val in a {
 		len += val.len + del.len
 	}
 	len -= del.len
@@ -1223,7 +1218,6 @@ pub fn (a []string) join(del string) string {
 	// Go thru every string and copy its every char one by one
 	for i, val in a {
 		for j in 0..val.len {
-			c := val[j]
 			res.str[idx] = val.str[j]
 			idx++
 		}

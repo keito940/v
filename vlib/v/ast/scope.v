@@ -4,6 +4,7 @@
 module ast
 
 import v.table
+import v.token
 
 pub struct Scope {
 mut:
@@ -51,15 +52,17 @@ pub fn (s &Scope) is_known(name string) bool {
 	if _ := s.find(name) {
 		return true
 	}
+	//
+	else{}
 	return false
 }
 
-pub fn (s &Scope) find_var(name string) ?Var {
+pub fn (s &Scope) find_var(name string) ?&Var {
 	if obj := s.find(name) {
 		v := ScopeObject(obj)
 		match v {
 			Var {
-				return *it
+				return it
 			}
 			else {}
 		}
@@ -67,12 +70,12 @@ pub fn (s &Scope) find_var(name string) ?Var {
 	return none
 }
 
-pub fn (s &Scope) find_const(name string) ?ConstField {
+pub fn (s &Scope) find_const(name string) ?&ConstField {
 	if obj := s.find(name) {
 		cf := ScopeObject(obj)
 		match cf {
 			ConstField {
-				return *it
+				return it
 			}
 			else {}
 		}
@@ -100,7 +103,10 @@ pub fn (s mut Scope) update_var_type(name string, typ table.Type) {
 }
 
 pub fn (s mut Scope) register(name string, obj ScopeObject) {
-	if x := s.find(name) {
+	if name == '_' {
+		return
+	}
+	if _ := s.find(name) {
 		// println('existing obect: $name')
 		return
 	}

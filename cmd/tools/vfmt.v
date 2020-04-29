@@ -27,7 +27,7 @@ struct FormatOptions {
 }
 
 const (
-	platform_and_file_extensions = [['windows', '_win.v', '_windows.v'], ['linux', '_lin.v',
+	platform_and_file_extensions = [['windows', '_windows.v'], ['linux', '_lin.v',
 		'_linux.v', '_nix.v'], ['macos', '_mac.v', '_darwin.v'], ['freebsd', '_bsd.v', '_freebsd.v'],
 		['netbsd', '_bsd.v', '_netbsd.v'], ['openbsd', '_bsd.v', '_openbsd.v'], ['solaris', '_solaris.v'],
 		['haiku', '_haiku.v'], ['qnx', '_qnx.v']]
@@ -74,7 +74,7 @@ fn main() {
 		eprintln('vfmt env_vflags_and_os_args: ' + args.str())
 		eprintln('vfmt possible_files: ' + possible_files.str())
 	}
-	var files := []string
+	mut files := []string{}
 	for file in possible_files {
 		if !file.ends_with('.v') && !file.ends_with('.vv') {
 			verror('v fmt can only be used on .v files.\nOffending file: "$file"')
@@ -90,16 +90,16 @@ fn main() {
 		vhelp.show_topic('fmt')
 		exit(0)
 	}
-	var cli_args_no_files := []string
+	mut cli_args_no_files := []string{}
 	for a in os.args {
-		if !(a in files) {
+		if a !in files {
 			cli_args_no_files << a
 		}
 	}
-	var errors := 0
+	mut errors := 0
 	for file in files {
 		fpath := os.real_path(file)
-		var worker_command_array := cli_args_no_files.clone()
+		mut worker_command_array := cli_args_no_files.clone()
 		worker_command_array << ['-worker', fpath]
 		worker_cmd := worker_command_array.join(' ')
 		if foptions.is_verbose {
@@ -141,7 +141,8 @@ fn main() {
 }
 
 fn (foptions &FormatOptions) format_file(file string) {
-	prefs := pref.new_preferences()
+	mut prefs := pref.new_preferences()
+	prefs.is_fmt = util.is_fmt()
 	if foptions.is_verbose {
 		eprintln('vfmt2 running fmt.fmt over file: $file')
 	}
@@ -252,8 +253,8 @@ fn file_to_target_os(file string) string {
 }
 
 fn file_to_mod_name_and_is_module_file(file string) (string, bool) {
-	var mod_name := 'main'
-	var is_module_file := false
+	mut mod_name := 'main'
+	mut is_module_file := false
 	flines := read_source_lines(file) or {
 		return mod_name, is_module_file
 	}
@@ -287,7 +288,7 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	all_files_in_pfolder := os.ls(pfolder) or {
 		panic(err)
 	}
-	var vfiles := []string
+	mut vfiles := []string{}
 	for f in all_files_in_pfolder {
 		vf := os.join_path(pfolder, f)
 		if f.starts_with('.') || !f.ends_with('.v') || os.is_dir(vf) {
@@ -304,7 +305,7 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	// containing `fn main` then the folder contains multiple standalone
 	// v programs. If only one contains `fn main` then the folder is
 	// a project folder, that should be compiled with `v pfolder`.
-	var main_fns := 0
+	mut main_fns := 0
 	for f in vfiles {
 		slines := read_source_lines(f) or {
 			panic(err)

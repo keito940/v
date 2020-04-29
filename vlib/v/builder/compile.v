@@ -3,13 +3,11 @@
 // that can be found in the LICENSE file.
 module builder
 
-import (
-	benchmark
-	os
-	v.pref
-	v.util
-	strings
-)
+import benchmark
+import os
+import v.pref
+import v.util
+import strings
 
 fn get_vtmp_folder() string {
 	vtmp := os.join_path(os.temp_dir(), 'v')
@@ -38,10 +36,6 @@ pub fn compile(command string, pref &pref.Preferences) {
 		.c { b.compile_c() }
 		.js { b.compile_js() }
 		.x64 { b.compile_x64() }
-		else {
-			eprintln('backend not implemented `$pref.backend`')
-			exit(1)
-		}
 	}
 	if pref.is_stats {
 		tmark.stop()
@@ -53,7 +47,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 	// v.finalize_compilation()
 }
 
-fn (b mut Builder) run_compiled_executable_and_exit() {
+fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.is_verbose {
 		println('============ running $b.pref.out_name ============')
 	}
@@ -88,7 +82,7 @@ fn (b mut Builder) run_compiled_executable_and_exit() {
 // 'strings' => 'VROOT/vlib/strings'
 // 'installed_mod' => '~/.vmodules/installed_mod'
 // 'local_mod' => '/path/to/current/dir/local_mod'
-fn (v mut Builder) set_module_lookup_paths() {
+fn (mut v Builder) set_module_lookup_paths() {
 	// Module search order:
 	// 0) V test files are very commonly located right inside the folder of the
 	// module, which they test. Adding the parent folder of the module folder
@@ -103,7 +97,7 @@ fn (v mut Builder) set_module_lookup_paths() {
 	// 3.2) search in ~/.vmodules/ (i.e. modules installed with vpm)
 	v.module_search_paths = []
 	if v.pref.is_test {
-		v.module_search_paths << os.base_dir(v.compiled_dir)		// pdir of _test.v
+		v.module_search_paths << os.base_dir(v.compiled_dir) // pdir of _test.v
 	}
 	v.module_search_paths << v.compiled_dir
 	x := os.join_path(v.compiled_dir, 'modules')
@@ -119,7 +113,7 @@ fn (v mut Builder) set_module_lookup_paths() {
 }
 
 pub fn (v Builder) get_builtin_files() []string {
-	if v.pref.build_mode == .build_module && v.pref.path == 'vlib/builtin' {		// .contains('builtin/' +  location {
+	if v.pref.build_mode == .build_module && v.pref.path == 'vlib/builtin' { // .contains('builtin/' +  location {
 		// We are already building builtin.o, no need to import them again
 		if v.pref.is_verbose {
 			println('skipping builtin modules for builtin.o')
@@ -153,7 +147,7 @@ pub fn (v Builder) get_user_files() []string {
 	v.log('get_v_files($dir)')
 	// Need to store user files separately, because they have to be added after
 	// libs, but we dont know	which libs need to be added yet
-	mut user_files := []string
+	mut user_files := []string{}
 	// See cmd/tools/preludes/README.md for more info about what preludes are
 	vroot := os.dir(pref.vexe_path())
 	preludes_path := os.join_path(vroot, 'cmd', 'tools', 'preludes')
@@ -168,6 +162,9 @@ pub fn (v Builder) get_user_files() []string {
 	}
 	if v.pref.is_test && v.pref.is_stats {
 		user_files << os.join_path(preludes_path, 'tests_with_stats.v')
+	}
+	if v.pref.is_prof {
+		user_files << os.join_path(preludes_path, 'profiled_program.v')
 	}
 	is_test := dir.ends_with('_test.v')
 	mut is_internal_module_test := false

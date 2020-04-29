@@ -12,7 +12,7 @@ const (
 )
 
 pub struct Request {
-pub:
+pub mut:
 	method     string
 	headers    map[string]string
 	cookies    map[string]string
@@ -128,7 +128,7 @@ pub fn get_text(url string) string {
 }
 
 pub fn url_encode_form_data(data map[string]string) string {
-	mut pieces := []string
+	mut pieces := []string{}
 	for _key, _value in data {
 		key := urllib.query_escape(_key)
 		value := urllib.query_escape(_value)
@@ -151,7 +151,7 @@ fn build_url_from_fetch(_url string, config FetchConfig) ?string {
 	if params.keys().len == 0 {
 		return url.str()
 	}
-	mut pieces := []string
+	mut pieces := []string{}
 	for key in params.keys() {
 		pieces << '${key}=${params[key]}'
 	}
@@ -207,7 +207,7 @@ pub fn (req &Request) do() ?Response {
 			return error(err)
 		}
 		resp = qresp
-		if !(resp.status_code in [301, 302, 303, 307, 308]) {
+		if resp.status_code !in [301, 302, 303, 307, 308] {
 			break
 		}
 		// follow any redirects
@@ -314,14 +314,14 @@ fn parse_response(resp string) Response {
 
 fn (req &Request) build_request_headers(method, host_name, path string) string {
 	ua := req.user_agent
-	mut uheaders := []string
-	if !('Host' in req.headers) {
+	mut uheaders := []string{}
+	if 'Host' !in req.headers {
 		uheaders << 'Host: $host_name\r\n'
 	}
-	if !('User-Agent' in req.headers) {
+	if 'User-Agent' !in req.headers {
 		uheaders << 'User-Agent: $ua\r\n'
 	}
-	if req.data.len > 0 && !('Content-Length' in req.headers) {
+	if req.data.len > 0 && 'Content-Length' !in req.headers {
 		uheaders << 'Content-Length: ${req.data.len}\r\n'
 	}
 	for key, val in req.headers {
@@ -338,7 +338,7 @@ fn (req &Request) build_request_cookies_header() string {
 	if req.cookies.keys().len < 1 {
 		return ''
 	}
-	mut cookie := []string
+	mut cookie := []string{}
 	for key, val in req.cookies {
 		cookie << '$key: $val'
 	}

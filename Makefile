@@ -45,10 +45,10 @@ endif
 
 all: latest_vc latest_tcc
 ifdef WIN32
-	$(CC) $(CFLAGS) -std=c99 -municode -w -o v.exe $(TMPVC)/$(VCFILE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -g -std=c99 -municode -w -o v.exe $(TMPVC)/$(VCFILE) $(LDFLAGS)
 	./v.exe self
 else
-	$(CC) $(CFLAGS) -std=gnu11 -w -o v $(TMPVC)/$(VCFILE) $(LDFLAGS) -lm
+	$(CC) $(CFLAGS) -g -std=gnu11 -w -o v $(TMPVC)/$(VCFILE) $(LDFLAGS) -lm
 ifdef ANDROID
 	chmod 755 v
 endif
@@ -61,6 +61,7 @@ ifdef V_ALWAYS_CLEAN_TMP
 	$(MAKE) clean_tmp
 endif
 	@echo "V has been successfully built"
+	@./v -version
 
 clean: clean_tmp
 	git clean -xf

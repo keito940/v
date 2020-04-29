@@ -24,7 +24,7 @@ fn C.readdir(voidptr) C.dirent
 
 
 pub const (
-	args = []string
+	args = []string{}
 	MAX_PATH = 4096
 )
 
@@ -245,7 +245,7 @@ fn read_ulines(path string) ?[]ustring {
 		return error(err)
 	}
 	// mut ulines := new_array(0, lines.len, sizeof(ustring))
-	mut ulines := []ustring
+	mut ulines := []ustring{}
 	for myline in lines {
 		// ulines[i] = ustr
 		ulines << myline.ustring()
@@ -467,28 +467,30 @@ pub fn sigint_to_signal_name(si int) string {
 	$if linux {
 		// From `man 7 signal` on linux:
 		match si {
-			30, 10, 16 {
+			// TODO dependent on platform
+			// works only on x86/ARM/most others
+			10 /*, 30, 16 */ {
 				return 'SIGUSR1'
 			}
-			31, 12, 17 {
+			12 /*, 31, 17 */ {
 				return 'SIGUSR2'
 			}
-			20, 17, 18 {
+			17 /*, 20, 18 */ {
 				return 'SIGCHLD'
 			}
-			19, 18, 25 {
+			18 /*, 19, 25 */ {
 				return 'SIGCONT'
 			}
-			17, 19, 23 {
+			19 /*, 17, 23 */ {
 				return 'SIGSTOP'
 			}
-			18, 20, 24 {
+			20 /*, 18, 24 */ {
 				return 'SIGTSTP'
 			}
-			21, 21, 26 {
+			21 /*, 26 */ {
 				return 'SIGTTIN'
 			}
-			22, 22, 27 {
+			22 /*, 27 */ {
 				return 'SIGTTOU'
 			}
 			// /////////////////////////////
@@ -660,6 +662,13 @@ pub fn file_name(path string) string {
 	return path.all_after(path_separator)
 }
 
+// input returns a one-line string from stdin, after printing a prompt
+pub fn input(prompt string) string {
+	print(prompt)
+	flush()
+	return get_line()
+}
+
 // get_line returns a one-line string from stdin
 pub fn get_line() string {
 	str := get_raw_line()
@@ -713,7 +722,7 @@ pub fn get_raw_line() string {
 
 pub fn get_lines() []string {
 	mut line := ''
-	mut inputstr := []string
+	mut inputstr := []string{}
 	for {
 		line = get_line()
 		if line.len <= 0 {
@@ -891,6 +900,10 @@ pub fn executable() string {
 // it relies on path manipulation of os.args[0] and os.wd_at_startup, so it may not work properly in
 // all cases, but it should be better, than just using os.args[0] directly.
 fn executable_fallback() string {
+	if os.args.len == 0 {
+		// we are early in the bootstrap, os.args has not been initialized yet :-|
+		return ''
+	}
 	mut exepath := os.args[0]
 	if !os.is_abs_path(exepath) {
 		if exepath.contains( os.path_separator ) {
@@ -1030,7 +1043,7 @@ pub fn is_abs_path(path string) bool {
 
 // join returns path as string from string parameter(s).
 pub fn join_path(base string, dirs ...string) string {
-	mut result := []string
+	mut result := []string{}
 	result << base.trim_right('\\/')
 	for d in dirs {
 		result << d
@@ -1046,9 +1059,9 @@ pub fn walk_ext(path, ext string) []string {
 	mut files := os.ls(path) or {
 		return []
 	}
-	mut res := []string
+	mut res := []string{}
 	separator := if path.ends_with(os.path_separator) { '' } else { os.path_separator }
-	for i, file in files {
+	for file in files {
 		if file.starts_with('.') {
 			continue
 		}

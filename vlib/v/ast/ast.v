@@ -6,11 +6,11 @@ module ast
 import v.token
 import v.table
 
-pub type TypeDecl = AliasTypeDecl | SumTypeDecl | FnTypeDecl
+pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-pub type Expr = InfixExpr | IfExpr | StringLiteral | IntegerLiteral | CharLiteral | FloatLiteral | Ident | CallExpr | BoolLiteral | StructInit | ArrayInit | SelectorExpr | PostfixExpr | AssignExpr | PrefixExpr | IndexExpr | RangeExpr | MatchExpr | CastExpr | EnumVal | Assoc | SizeOf | None | MapInit | IfGuardExpr | ParExpr | OrExpr | ConcatExpr | Type | AsCast | TypeOf | StringInterLiteral | AnonFn
+pub type Expr = AnonFn | ArrayInit | AsCast | AssignExpr | Assoc | BoolLiteral | CallExpr | CastExpr | CharLiteral | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | StringInterLiteral | StringLiteral | StructInit | Type | TypeOf
 
-pub type Stmt = GlobalDecl | FnDecl | Return | Module | Import | ExprStmt | ForStmt | StructDecl | ForCStmt | ForInStmt | CompIf | ConstDecl | Attr | BranchStmt | HashStmt | AssignStmt | EnumDecl | TypeDecl | DeferStmt | GotoLabel | GotoStmt | Comment | AssertStmt | UnsafeStmt | GoStmt | Block | InterfaceDecl
+pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf | ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | StructDecl | TypeDecl | UnsafeStmt
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -48,6 +48,7 @@ pub:
 pub struct FloatLiteral {
 pub:
 	val string
+	pos token.Position
 }
 
 pub struct StringLiteral {
@@ -73,11 +74,13 @@ mut:
 pub struct CharLiteral {
 pub:
 	val string
+	pos token.Position
 }
 
 pub struct BoolLiteral {
 pub:
 	val bool
+	pos token.Position
 }
 
 // `foo.bar`
@@ -131,9 +134,10 @@ mut:
 
 pub struct ConstDecl {
 pub:
-	fields []ConstField
 	is_pub bool
 	pos    token.Position
+pub mut:
+	fields []ConstField
 }
 
 pub struct StructDecl {
@@ -154,14 +158,15 @@ pub struct InterfaceDecl {
 pub:
 	name        string
 	field_names []string
+	methods     []FnDecl
 }
 
 pub struct StructInitField {
 pub:
-	name          string
 	expr          Expr
 	pos           token.Position
 mut:
+	name          string
 	typ           table.Type
 	expected_type table.Type
 }
@@ -169,10 +174,10 @@ mut:
 pub struct StructInit {
 pub:
 	pos      token.Position
-	fields   []StructInitField
 	is_short bool
 mut:
 	typ      table.Type
+	fields   []StructInitField
 }
 
 // import statement
@@ -194,7 +199,6 @@ pub struct FnDecl {
 pub:
 	name          string
 	stmts         []Stmt
-	return_type   table.Type
 	args          []table.Arg
 	is_deprecated bool
 	is_pub        bool
@@ -207,7 +211,10 @@ pub:
 	is_js         bool
 	no_body       bool // just a definition `fn C.malloc()`
 	is_builtin    bool // this function is defined in builtin/strconv
+	ctdefine      string // has [if myflag] tag
 	pos           token.Position
+pub mut:
+	return_type   table.Type
 }
 
 pub struct BranchStmt {
@@ -219,10 +226,10 @@ pub struct CallExpr {
 pub:
 	pos                token.Position
 	left               Expr // `user` in `user.register()`
-	is_method          bool
 	mod                string
 mut:
 	name               string
+	is_method          bool
 	args               []CallArg
 	expected_arg_types []table.Type
 	is_c               bool
@@ -231,6 +238,7 @@ mut:
 	left_type          table.Type // type of `user`
 	receiver_type      table.Type // User
 	return_type        table.Type
+	should_be_skipped  bool
 }
 
 pub struct CallArg {
@@ -264,12 +272,13 @@ pub struct Stmt {
 */
 pub struct Var {
 pub:
-	name   string
-	expr   Expr
-	is_mut bool
+	name    string
+	expr    Expr
+	is_mut  bool
 mut:
-	typ    table.Type
-	pos    token.Position
+	typ     table.Type
+	pos     token.Position
+	is_used bool
 }
 
 pub struct GlobalDecl {
@@ -285,10 +294,11 @@ pub struct File {
 pub:
 	path         string
 	mod          Module
-	imports      []Import
 	stmts        []Stmt
 	scope        &Scope
 	global_scope &Scope
+mut:
+	imports      []Import
 }
 
 pub struct IdentFn {
@@ -324,11 +334,11 @@ pub:
 	tok_kind token.Kind
 	mod      string
 	pos      token.Position
-	is_mut   bool
 mut:
 	name     string
 	kind     IdentKind
 	info     IdentInfo
+	is_mut   bool
 }
 
 pub fn (i &Ident) var_info() IdentVar {
@@ -422,6 +432,15 @@ pub:
 	is_else bool
 }
 
+/*
+CompIf.is_opt:
+`$if xyz? {}` => this compile time `if` is optional,
+and .is_opt reflects the presence of ? at the end.
+When .is_opt is true, the code should compile, even
+if `xyz` is NOT defined.
+If .is_opt is false, then when `xyz` is not defined,
+the compilation will fail.
+*/
 pub struct CompIf {
 pub:
 	val        string
@@ -429,6 +448,7 @@ pub:
 	is_not     bool
 	pos        token.Position
 mut:
+	is_opt     bool
 	has_else   bool
 	else_stmts []Stmt
 }
@@ -491,11 +511,11 @@ pub:
 
 pub struct AssignStmt {
 pub:
-	left        []Ident
 	right       []Expr
 	op          token.Kind
 	pos         token.Position
-mut:
+pub mut:
+	left        []Ident
 	left_types  []table.Type
 	right_types []table.Type
 	is_static   bool // for translated code only
@@ -538,7 +558,6 @@ pub:
 	name   string
 	is_pub bool
 	fields []EnumField
-	// default_exprs []Expr
 	pos    token.Position
 }
 
@@ -618,7 +637,12 @@ pub:
 	pos       token.Position
 	exprs     []Expr
 	is_fixed  bool
+	has_val   bool
 	mod       string
+	len_expr  Expr
+	has_len   bool
+	has_cap   bool
+	cap_expr  Expr
 mut:
 	elem_type table.Type
 	typ       table.Type
@@ -649,8 +673,8 @@ pub:
 	expr      Expr // `buf`
 	arg       Expr // `n` in `string(buf, n)`
 	typ       table.Type // `string`
-	typname   string
 mut:
+	typname   string
 	expr_type table.Type // `byteptr`
 	has_arg   bool
 }
@@ -736,7 +760,7 @@ pub fn expr_is_call(expr Expr) bool {
 
 fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
-	match var expr {
+	match mut expr {
 		ArrayInit {
 			return it.pos
 		}
@@ -751,15 +775,24 @@ fn (expr Expr) position() token.Position {
 		Assoc {
 			return it.pos
 		}
-		// ast.BoolLiteral { }
+		BoolLiteral {
+			return it.pos
+		}
 		CallExpr {
 			return it.pos
 		}
-		// ast.CharLiteral { }
+		CharLiteral {
+			return it.pos
+		}
 		EnumVal {
 			return it.pos
 		}
-		// ast.FloatLiteral { }
+		FloatLiteral {
+			return it.pos
+		}
+		Ident {
+			return it.pos
+		}
 		IfExpr {
 			return it.pos
 		}

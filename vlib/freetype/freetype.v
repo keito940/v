@@ -4,13 +4,11 @@
 
 module freetype
 
-import (
-	os
-	gx
-	gg
-	glm
-	gl
-)
+import os
+import gx
+import gg
+import glm
+import gl
 
 #flag windows -I @VROOT/thirdparty/freetype/include
 #flag windows -L @VROOT/thirdparty/freetype/win64
@@ -223,7 +221,7 @@ pub fn new_context(cfg gg.Cfg) &FreeType {
 	C.glPixelStorei(C.GL_UNPACK_ALIGNMENT, 1)
 	// Gen texture
 	// Load first 128 characters of ASCII set
-	mut chars := []Character
+	mut chars := []Character{}
 	for c in 0..128 {
 		ch := ft_load_char(face, i64(c))
 		// s := utf32_to_str(uint(0x043f))
@@ -334,7 +332,7 @@ fn (ctx mut FreeType) private_draw_text(_x, _y int, utext ustring, cfg gx.TextCf
 		}
 		// A new Unicode character. Load it and cache it.
 		if !found && _rune.len > 0 && _rune[0] > 32 {
-			c := _rune[0]
+			//c := _rune[0]
 			//println('cant draw rune "$_rune" code=$c, loading')
 			//continue
 			ch = ft_load_char(ctx.face, _rune.utf32_code())
@@ -454,7 +452,7 @@ pub fn (f FT_Face) str() string {
 */
 
 pub fn (ac []Character) str() string {
-	mut res := []string
+	mut res := []string{}
 	for c in ac {
 		res << '  Character{ code: $c.code , texture_id: $c.texture_id }'
 	}

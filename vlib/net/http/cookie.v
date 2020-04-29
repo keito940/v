@@ -3,11 +3,9 @@
 // that can be found in the LICENSE file.
 module http
 
-import (
-	time
-	arrays
-	strings
-)
+import time
+import arrays
+import strings
 
 pub struct Cookie {
 pub mut:
@@ -48,7 +46,7 @@ pub fn read_set_cookies(h map[string][]string) []&Cookie {
 	if cookie_count == 0 {
 		return []
 	}
-	mut cookies := []&Cookie
+	mut cookies := []&Cookie{}
 	for _, line in cookies_s {
 		mut parts := line.trim_space().split(';')
 		if parts.len == 1 && parts[0] == '' {
@@ -107,10 +105,6 @@ pub fn read_set_cookies(h map[string][]string) []&Cookie {
 					c.http_only = true
 					continue
 				}
-				'httponly' {
-					c.http_only = true
-					continue
-				}
 				'domain' {
 					c.domain = val
 					continue
@@ -159,7 +153,7 @@ pub fn read_cookies(h map[string][]string, filter string) []&Cookie {
 	if lines.len == 0 {
 		return []
 	}
-	mut cookies := []&Cookie
+	mut cookies := []&Cookie{}
 	for _, _line in lines {
 		mut line := _line.trim_space()
 		mut part := ''
@@ -269,9 +263,6 @@ pub fn (c &Cookie) str() string {
 		}
 		.same_site_strict_mode {
 			b.write('; SameSite=Strict')
-		}
-		else {
-			// Do nothing
 		}
 	}
 	return b.str()
@@ -419,13 +410,10 @@ fn is_cookie_name_valid(name string) bool {
 	if name == '' {
 		return false
 	}
-	// TODO
-	/*
-	for b in name.bytes() {
-		if !(b in arrays.range<byte>(33, 126)) {
+	for b in name {
+		if b < 33 || b > 126 {
 			return false
 		}
 	}
-	*/
 	return true
 }

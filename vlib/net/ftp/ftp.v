@@ -42,7 +42,7 @@ mut:
 }
 
 fn (dtp DTP) read() []byte {
-	mut data := []byte
+	mut data := []byte{}
 	for {
 		buf, len := dtp.sock.recv(1024)
 		if len == 0 { break }
@@ -127,10 +127,7 @@ pub fn (ftp FTP) login(user, passwd string) bool {
 		return false
 	}
 
-	mut data := ''
-	mut code := 0
-
-	code, data = ftp.read()
+	mut code, data := ftp.read()
 	if code == LoggedIn {
 		return true
 	}
@@ -250,7 +247,7 @@ pub fn (ftp FTP) dir() ?[]string {
 	}
 	dtp.close()
 
-	mut dir := []string
+	mut dir := []string{}
 	sdir := string(byteptr(list_dir.data))
 	for lfile in sdir.split('\n') {
 		if lfile.len >1 {

@@ -1,10 +1,8 @@
 module log
 
-import (
-	os
-	time
-	term
-)
+import os
+import time
+import term
 
 pub enum Level {
 	fatal = 1
@@ -21,7 +19,6 @@ fn tag(l Level) string {
 		.warn  { term.yellow('WARN ') }
 		.info  { term.white('INFO ') }
 		.debug { term.blue('DEBUG') }
-		else { '     ' }
 	}
 }
 

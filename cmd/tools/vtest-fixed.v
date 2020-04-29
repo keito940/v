@@ -7,37 +7,25 @@ import v.pref
 const (
 	skip_test_files = [
 		'vlib/arrays/arrays_test.v',
-		'vlib/crypto/aes/aes_test.v',
-		'vlib/crypto/rc4/rc4_test.v',
-		'vlib/encoding/utf8/utf8_util_test.v',
 		'vlib/eventbus/eventbus_test.v',
-		'vlib/flag/flag_test.v',
 		'vlib/json/json_test.v',
-		'vlib/net/ftp/ftp_test.v',
-		'vlib/net/http/http_httpbin_test.v',
-		'vlib/net/http/http_test.v',
-		'vlib/regex/regex_test.v',
 		'vlib/v/tests/enum_bitfield_test.v',
-		'vlib/v/tests/fixed_array_test.v',
-		'vlib/v/tests/fn_test.v',
-		'vlib/v/tests/fn_variadic_test.v',
-		'vlib/v/tests/mut_test.v',
 		'vlib/v/tests/num_lit_call_method_test.v',
-		'vlib/v/tests/option_test.v',
 		'vlib/v/tests/pointers_test.v',
-		'vlib/v/tests/string_interpolation_variadic_test.v',
 		'vlib/v/tests/type_test.v',
 		'vlib/v/tests/valgrind/valgrind_test.v', // ubuntu-musl only
 		'vlib/v/tests/pointers_str_test.v',
-		'vlib/net/http/cookie_test.v',
+		'vlib/net/http/http_httpbin_test.v', // fails on ubuntu-musl, because of missing openssl
+		'vlib/net/http/http_test.v', // fails on ubuntu-musl, because of missing openssl
+		'vlib/net/http/cookie_test.v', // ok, but should be skipped on ubuntu-musl, since there is no openssl there
+		'vlib/clipboard/clipboard_test.v',
+		'vlib/sqlite/sqlite_test.v',
 
 		'vlib/v/tests/live_test.v', // Linux & Solaris only; since live does not actually work for now with v2, just skip
 		'vlib/v/tests/asm_test.v', // skip everywhere for now, works on linux with cc != tcc
-		'vlib/sqlite/sqlite_test.v', // works only on ubuntu with installed sqlite
-		'vlib/clipboard/clipboard_test.v', // needs code changes to make it compile with v2
 	]
-	skip_on_linux = []string
-	skip_on_non_linux = []string
+	skip_on_linux = []string{}
+	skip_on_non_linux = []string{}
 )
 
 fn main() {

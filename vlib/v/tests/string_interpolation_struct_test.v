@@ -11,10 +11,25 @@ fn test_default_struct_string_interpolation() {
 	superman := Man{'Superman', 30, ['flying', 'fighting evil', 'being nice']}
 	s := '$superman'
 	assert s.contains('Man {')
-	assert s.contains('name: \'Superman\'')
+	assert s.contains("name: 'Superman'")
 	assert s.contains('age: 30')
 	assert s.contains('interests: [')
-	assert s.contains('"being nice"')
+	assert s.contains("'being nice'")
 	assert s.contains('}')
 	// println(s)
+}
+
+struct Context {
+pub mut:
+	vb [8]f64
+}
+
+fn test_fixed_array_struct_string_interpolation() {
+	mut ctx := Context{}
+	x := 2.32
+	ctx.vb = [1.1, x, 3.3, 4.4, 5.0, 6.0, 7.0, 8.9]!!
+	s := '$ctx'
+	assert s.contains('Context {')
+	assert s.contains('vb: [1.1, 2.32, 3.3, 4.4, 5, 6, 7, 8.9]')
+	assert s.contains('}')
 }

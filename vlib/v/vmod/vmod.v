@@ -91,7 +91,7 @@ fn (mcache mut ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 			}else{
 				mcache.mark_folders_with_vmod( folders_so_far, res )
 			}
-			return []string, res
+			return []string{}, res
 		}
 		files := mcache.get_files( cfolder )
 		if 'v.mod' in files {
@@ -139,7 +139,12 @@ fn (mcache mut ModFileCacher) get_files(cfolder string) []string {
 	if cfolder in mcache.folder_files {
 		return mcache.folder_files[ cfolder ]
 	}
-	files := os.ls(cfolder) or { return [] }
+	mut files := []string{}
+	if os.exists( cfolder ) && os.is_dir(cfolder) {
+		if listing := os.ls(cfolder) {
+			files = listing
+		}
+	}
 	mcache.folder_files[ cfolder ] = files
 	return files
 }

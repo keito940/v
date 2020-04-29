@@ -7,14 +7,14 @@ import v.ast
 import v.table
 import v.token
 
-fn (var p Parser) assign_stmt() ast.Stmt {
+fn (mut p Parser) assign_stmt() ast.Stmt {
 	is_static := p.tok.kind == .key_static
 	if is_static {
 		p.next()
 	}
 	idents := p.parse_assign_lhs()
 	op := p.tok.kind
-	p.next()	// :=, =
+	p.next() // :=, =
 	pos := p.tok.position()
 	exprs := p.parse_assign_rhs()
 	is_decl := op == .decl_assign
@@ -32,11 +32,13 @@ fn (var p Parser) assign_stmt() ast.Stmt {
 					name: ident.name
 					expr: exprs[i]
 					is_mut: ident.is_mut || p.inside_for
+					pos: ident.pos
 				})
 			} else {
 				p.scope.register(ident.name, ast.Var{
 					name: ident.name
 					is_mut: ident.is_mut || p.inside_for
+					pos: ident.pos
 				})
 			}
 		}
@@ -51,10 +53,10 @@ fn (var p Parser) assign_stmt() ast.Stmt {
 }
 
 // TODO: is it possible to merge with AssignStmt?
-pub fn (var p Parser) assign_expr(left ast.Expr) ast.AssignExpr {
+pub fn (mut p Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 	op := p.tok.kind
-	p.next()
 	pos := p.tok.position()
+	p.next()
 	val := p.expr(0)
 	match left {
 		ast.IndexExpr {
@@ -72,8 +74,8 @@ pub fn (var p Parser) assign_expr(left ast.Expr) ast.AssignExpr {
 	return node
 }
 
-fn (var p Parser) parse_assign_lhs() []ast.Ident {
-	var idents := []ast.Ident
+fn (mut p Parser) parse_assign_lhs() []ast.Ident {
+	mut idents := []ast.Ident{}
 	for {
 		is_mut := p.tok.kind == .key_mut || p.tok.kind == .key_var
 		if is_mut {
@@ -83,7 +85,7 @@ fn (var p Parser) parse_assign_lhs() []ast.Ident {
 		if is_static {
 			p.check(.key_static)
 		}
-		var ident := p.parse_ident(false, false)
+		mut ident := p.parse_ident(false, false)
 		ident.is_mut = is_mut
 		ident.info = ast.IdentVar{
 			is_mut: is_mut
@@ -100,8 +102,8 @@ fn (var p Parser) parse_assign_lhs() []ast.Ident {
 }
 
 // right hand side of `=` or `:=` in `a,b,c := 1,2,3`
-fn (var p Parser) parse_assign_rhs() []ast.Expr {
-	var exprs := []ast.Expr
+fn (mut p Parser) parse_assign_rhs() []ast.Expr {
+	mut exprs := []ast.Expr{}
 	for {
 		expr := p.expr(0)
 		exprs << expr

@@ -104,7 +104,12 @@ fn test_mut_ptr() {
 }
 
 fn high_fn(f fn(int) int) {
+	x := f(111)
+	println('x == $x')
+}
 
+fn high_fn_no_ret(f fn(int)) {
+	f(111)
 }
 
 fn high_fn_array(f fn(a []int) []int) {
@@ -125,12 +130,27 @@ fn test_fns() {
 }
 
 fn test_anon_fn() {
-	/*
+	f1 := fn(a int){
+		println('hello from f1')
+	}
+	f1(1)
+
+	f2 := fn(a int) int {
+		println('hello from f2')
+		return 10
+	}
+	f2res := f2(1)
+	println('f2res == $f2res')
+	// TODO/FIXME: assert bug? uncomment to see
+	// assert f2res == 10
+
 	high_fn(fn (x int) int {
-		println('hello')
 		return x + 1
 	})
-*/
+
+	high_fn_no_ret(fn (x int) {
+		println('hello $x')
+	})
 }
 
 fn assert_in_bool_fn(v int) bool {
@@ -151,7 +171,7 @@ struct MySt {
 	f MyFn
 }
 fn test_fn_type_call() {
-    mut arr := []MyFn
+    mut arr := []MyFn{}
     arr << MyFn(test)
 	// TODO: `arr[0](10)`
 	// assert arr[0](10) == 1010

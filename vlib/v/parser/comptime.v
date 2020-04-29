@@ -3,11 +3,9 @@
 // that can be found in the LICENSE file.
 module parser
 
-import (
-	v.ast
-	v.pref
-	v.vmod
-)
+import v.ast
+import v.pref
+import v.vmod
 
 const (
 	supported_platforms = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
@@ -15,7 +13,7 @@ const (
 )
 
 // // #include, #flag, #v
-fn (p mut Parser) hash() ast.HashStmt {
+fn (mut p Parser) hash() ast.HashStmt {
 	val := p.tok.lit
 	p.next()
 	if val.starts_with('flag') {
@@ -23,14 +21,13 @@ fn (p mut Parser) hash() ast.HashStmt {
 		mut flag := val[5..]
 		// expand `@VROOT` to its absolute path
 		if flag.contains('@VROOT') {
-			vmod_file_location := vmod.mod_file_cacher.get( p.file_name_dir )
+			vmod_file_location := vmod.mod_file_cacher.get(p.file_name_dir)
 			if vmod_file_location.vmod_file.len == 0 {
 				// There was no actual v.mod file found.
-				p.error('To use @VROOT, you need' +
-					' to have a "v.mod" file in ${p.file_name_dir},' +
+				p.error('To use @VROOT, you need' + ' to have a "v.mod" file in ${p.file_name_dir},' +
 					' or in one of its parent folders.')
 			}
-			flag = flag.replace('@VROOT', vmod_file_location.vmod_folder )
+			flag = flag.replace('@VROOT', vmod_file_location.vmod_folder)
 		}
 		for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
 			if flag.contains(deprecated) {
@@ -48,7 +45,7 @@ fn (p mut Parser) hash() ast.HashStmt {
 				p.pref.cflags += val.after('darwin')
 			}
 		}
-*/
+		*/
 	}
 	return ast.HashStmt{
 		val: val
@@ -56,7 +53,7 @@ fn (p mut Parser) hash() ast.HashStmt {
 	}
 }
 
-fn (p mut Parser) comp_if() ast.CompIf {
+fn (mut p Parser) comp_if() ast.CompIf {
 	pos := p.tok.position()
 	p.next()
 	p.check(.key_if)
@@ -65,19 +62,20 @@ fn (p mut Parser) comp_if() ast.CompIf {
 		p.next()
 	}
 	val := p.check_name()
-	mut stmts := []ast.Stmt
+	mut stmts := []ast.Stmt{}
 	mut skip_os := false
 	if val in supported_platforms {
 		os := os_from_string(val)
 		// `$if os {` for a different target, skip everything inside
 		// to avoid compilation errors (like including <windows.h> or calling WinAPI fns
 		// on non-Windows systems)
-		if false && ((!is_not && os != p.pref.os) || (is_not && os == p.pref.os)) && !p.pref.output_cross_c {
+		if !p.pref.is_fmt && ((!is_not && os != p.pref.os) || (is_not && os == p.pref.os)) &&
+			!p.pref.output_cross_c {
 			skip_os = true
 			p.check(.lcbr)
 			// p.warn('skipping $if $val os=$os p.pref.os=$p.pref.os')
 			mut stack := 1
-			for  {
+			for {
 				if p.tok.kind == .key_return {
 					p.returns = true
 				}
@@ -98,14 +96,17 @@ fn (p mut Parser) comp_if() ast.CompIf {
 			}
 		}
 	}
+	mut is_opt := false
 	if p.tok.kind == .question {
 		p.next()
+		is_opt = true
 	}
 	if !skip_os {
 		stmts = p.parse_block()
 	}
 	mut node := ast.CompIf{
 		is_not: is_not
+		is_opt: is_opt
 		pos: pos
 		val: val
 		stmts: stmts

@@ -46,7 +46,7 @@ pub fn (r mut Reader) read() ?[]string {
 
 // Once we have multi dimensional array
 // pub fn (r mut Reader) read_all() ?[][]string {
-// 	mut records := []string
+// 	mut records := []string{}
 // 	for {
 // 		record := r.read_record() or {
 // 			if error(err).error == err_eof.error {
@@ -77,6 +77,9 @@ fn (r mut Reader) read_line() ?string {
 				// no valid line endings found
 				return err_invalid_le
 			}
+		} else {
+			// No line ending on file
+			i = r.data.len-1
 		}
 	}
 	mut line := r.data[r.row_pos..i]
@@ -107,7 +110,7 @@ fn (r mut Reader) read_record() ?[]string {
 		}
 		break
 	}
-	mut fields := []string
+	mut fields := []string{}
 	mut i := -1
 	for {
 		// not quoted
@@ -115,6 +118,7 @@ fn (r mut Reader) read_record() ?[]string {
 			// QTODO i = ...
 			j := line.index(r.delimiter.str()) or {
 				// last
+				fields << line[..line.len]
 				break
 			}
 			i = j

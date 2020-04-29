@@ -3,10 +3,8 @@
 // that can be found in the LICENSE file.
 module builtin
 
-import (
-	strings
-	hash.wyhash
-)
+import strings
+import hash.wyhash
 
 fn C.memcmp(byteptr, byteptr, int) int
 
@@ -135,6 +133,16 @@ fn (d mut DenseArray) push(kv KeyValue) u32 {
 	return push_index
 }
 
+// Private function. Used to implement array[] operator
+fn (d DenseArray) get(i int) voidptr {
+	$if !no_bounds_checking? {
+		if i < 0 || i >= d.size {
+			panic('DenseArray.get: index out of range (i == $i, d.len == $d.size)')
+		}
+	}
+	return byteptr(d.data) + i * sizeof(KeyValue)
+}
+
 // Move all zeros to the end of the array
 // and resize array
 fn (d mut DenseArray) zeros_to_end() {
@@ -203,7 +211,7 @@ fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
 }
 
 [inline]
-fn (m map) key_to_index(key string) (u32,u32) {
+fn (m &map) key_to_index(key string) (u32,u32) {
 	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
 	index := hash & m.cap
 	meta := ((hash>>m.shift) & hash_mask) | probe_inc
@@ -211,7 +219,7 @@ fn (m map) key_to_index(key string) (u32,u32) {
 }
 
 [inline]
-fn (m map) meta_less(_index u32, _metas u32) (u32,u32) {
+fn (m &map) meta_less(_index u32, _metas u32) (u32,u32) {
 	mut index := _index
 	mut meta := _metas
 	for meta < m.metas[index] {
@@ -340,9 +348,7 @@ fn (m map) get3(key string, zero voidptr) voidptr {
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
 		if fast_string_eq(key, m.key_values.data[kv_index].key) {
-			out := malloc(m.value_bytes)
-			C.memcpy(out, m.key_values.data[kv_index].value, m.value_bytes)
-			return out
+			return m.key_values.data[kv_index].value
 		}
 		index += 2
 		meta += probe_inc

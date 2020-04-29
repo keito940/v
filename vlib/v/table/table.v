@@ -18,7 +18,6 @@ pub mut:
 
 pub struct Fn {
 pub:
-	name        string
 	args        []Arg
 	return_type Type
 	is_variadic bool
@@ -27,6 +26,9 @@ pub:
 	is_generic  bool
 	is_pub      bool
 	mod         string
+	ctdefine    string // compile time define. myflag, when [if myflag] tag
+pub mut:
+	name        string
 }
 
 pub struct Arg {
@@ -45,17 +47,17 @@ mut:
 }
 
 pub fn new_table() &Table {
-	var t := &Table{}
+	mut t := &Table{}
 	t.register_builtin_type_symbols()
 	return t
 }
 
 // used to compare fn's & for naming anon fn's
 pub fn (f &Fn) signature() string {
-	var sig := ''
+	mut sig := ''
 	for i, arg in f.args {
 		// TODO: for now ignore mut/pts in sig for now
-		typ := type_set_nr_muls(arg.typ, 0)
+		typ := arg.typ.set_nr_muls(0)
 		// if arg.is_mut {
 		// sig += 'mut_'
 		// }
@@ -85,12 +87,12 @@ pub fn (t &Table) known_fn(name string) bool {
 	return true
 }
 
-pub fn (var t Table) register_fn(new_fn Fn) {
+pub fn (mut t Table) register_fn(new_fn Fn) {
 	// println('reg fn $new_fn.name nr_args=$new_fn.args.len')
 	t.fns[new_fn.name] = new_fn
 }
 
-pub fn (var t TypeSymbol) register_method(new_fn Fn) {
+pub fn (mut t TypeSymbol) register_method(new_fn Fn) {
 	t.methods << new_fn
 }
 
@@ -119,13 +121,11 @@ pub fn (s &TypeSymbol) has_field(name string) bool {
 
 pub fn (s &TypeSymbol) find_field(name string) ?Field {
 	match s.info {
-		Struct {
-			for field in it.fields {
+		Struct { for field in it.fields {
 				if field.name == name {
 					return field
 				}
-			}
-		}
+			} }
 		else {}
 	}
 	return none
@@ -142,7 +142,7 @@ pub fn (t &Table) type_has_method(s &TypeSymbol, name string) bool {
 // search from current type up through each parent looking for method
 pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 	// println('type_find_method($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
-	var ts := s
+	mut ts := s
 	for {
 		if method := ts.find_method(name) {
 			return method
@@ -166,7 +166,7 @@ pub fn (t &Table) struct_has_field(s &TypeSymbol, name string) bool {
 // search from current type up through each parent looking for field
 pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 	// println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
-	var ts := s
+	mut ts := s
 	for {
 		if field := ts.find_field(name) {
 			return field
@@ -196,7 +196,7 @@ pub fn (t &Table) find_type(name string) ?TypeSymbol {
 [inline]
 pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 	// println('get_type_symbol $typ')
-	idx := type_idx(typ)
+	idx := typ.idx()
 	if idx > 0 {
 		return &t.types[idx]
 	}
@@ -214,7 +214,7 @@ pub fn (t &Table) get_type_name(typ Type) string {
 // allows prexisitng types added in register_builtins
 // to be overriden with their real type info
 [inline]
-pub fn (var t Table) register_builtin_type_symbol(typ TypeSymbol) int {
+pub fn (mut t Table) register_builtin_type_symbol(typ TypeSymbol) int {
 	existing_idx := t.type_idxs[typ.name]
 	if existing_idx > 0 {
 		if existing_idx >= string_type_idx {
@@ -234,7 +234,7 @@ pub fn (var t Table) register_builtin_type_symbol(typ TypeSymbol) int {
 }
 
 [inline]
-pub fn (var t Table) register_type_symbol(typ TypeSymbol) int {
+pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 	// println('register_type_symbol( $typ.name )')
 	existing_idx := t.type_idxs[typ.name]
 	if existing_idx > 0 {
@@ -274,7 +274,7 @@ pub fn (t &Table) known_type(name string) bool {
 [inline]
 pub fn (t &Table) array_name(elem_type Type, nr_dims int) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
-	return 'array_${elem_type_sym.name}' + if type_is_ptr(elem_type) {
+	return 'array_${elem_type_sym.name}' + if elem_type.is_ptr() {
 		'_ptr'
 	} else {
 		''
@@ -288,7 +288,7 @@ pub fn (t &Table) array_name(elem_type Type, nr_dims int) string {
 [inline]
 pub fn (t &Table) array_fixed_name(elem_type Type, size, nr_dims int) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
-	return 'array_fixed_${elem_type_sym.name}_${size}' + if type_is_ptr(elem_type) {
+	return 'array_fixed_${elem_type_sym.name}_${size}' + if elem_type.is_ptr() {
 		'_ptr'
 	} else {
 		''
@@ -303,12 +303,12 @@ pub fn (t &Table) array_fixed_name(elem_type Type, size, nr_dims int) string {
 pub fn (t &Table) map_name(key_type, value_type Type) string {
 	key_type_sym := t.get_type_symbol(key_type)
 	value_type_sym := t.get_type_symbol(value_type)
-	suffix := if type_is_ptr(value_type) { '_ptr' } else { '' }
+	suffix := if value_type.is_ptr() { '_ptr' } else { '' }
 	return 'map_${key_type_sym.name}_${value_type_sym.name}' + suffix
 	// return 'map_${value_type_sym.name}' + suffix
 }
 
-pub fn (var t Table) find_or_register_map(key_type, value_type Type) int {
+pub fn (mut t Table) find_or_register_map(key_type, value_type Type) int {
 	name := t.map_name(key_type, value_type)
 	// existing
 	existing_idx := t.type_idxs[name]
@@ -328,7 +328,7 @@ pub fn (var t Table) find_or_register_map(key_type, value_type Type) int {
 	return t.register_type_symbol(map_typ)
 }
 
-pub fn (var t Table) find_or_register_array(elem_type Type, nr_dims int) int {
+pub fn (mut t Table) find_or_register_array(elem_type Type, nr_dims int) int {
 	name := t.array_name(elem_type, nr_dims)
 	// existing
 	existing_idx := t.type_idxs[name]
@@ -348,7 +348,7 @@ pub fn (var t Table) find_or_register_array(elem_type Type, nr_dims int) int {
 	return t.register_type_symbol(array_type)
 }
 
-pub fn (var t Table) find_or_register_array_fixed(elem_type Type, size, nr_dims int) int {
+pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size, nr_dims int) int {
 	name := t.array_fixed_name(elem_type, size, nr_dims)
 	// existing
 	existing_idx := t.type_idxs[name]
@@ -368,8 +368,8 @@ pub fn (var t Table) find_or_register_array_fixed(elem_type Type, size, nr_dims 
 	return t.register_type_symbol(array_fixed_type)
 }
 
-pub fn (var t Table) find_or_register_multi_return(mr_typs []Type) int {
-	var name := 'multi_return'
+pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
+	mut name := 'multi_return'
 	for mr_typ in mr_typs {
 		mr_type_sym := t.get_type_symbol(mr_typ)
 		name += '_$mr_type_sym.name'
@@ -390,21 +390,20 @@ pub fn (var t Table) find_or_register_multi_return(mr_typs []Type) int {
 	return t.register_type_symbol(mr_type)
 }
 
-pub fn (var t Table) find_or_register_fn_type(f Fn, has_decl bool) int {
-	is_anon := f.name.len == 0
-	name := if is_anon { 'anon_fn_$f.signature()' } else { f.name }
+pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon, has_decl bool) int {
+	name := if f.name.len == 0 { 'anon_fn_$f.signature()' } else { f.name }
 	return t.register_type_symbol(TypeSymbol{
 		kind: .function
 		name: name
 		info: FnType{
-			is_anon: is_anon
+			is_anon: f.name.len == 0 || is_anon
 			has_decl: has_decl
 			func: f
 		}
 	})
 }
 
-pub fn (var t Table) add_placeholder_type(name string) int {
+pub fn (mut t Table) add_placeholder_type(name string) int {
 	ph_type := TypeSymbol{
 		kind: .placeholder
 		name: name
@@ -416,9 +415,9 @@ pub fn (var t Table) add_placeholder_type(name string) int {
 [inline]
 pub fn (t &Table) value_type(typ Type) Type {
 	typ_sym := t.get_type_symbol(typ)
-	if type_is(typ, .variadic) {
+	if typ.flag_is(.variadic) {
 		// ...string => string
-		return type_set(typ, .unset)
+		return typ.set_flag(.unset)
 	}
 	if typ_sym.kind == .array {
 		// Check index type
@@ -433,17 +432,17 @@ pub fn (t &Table) value_type(typ Type) Type {
 		info := typ_sym.info as Map
 		return info.value_type
 	}
-	if typ_sym.kind == .string && type_is_ptr(typ) {
+	if typ_sym.kind == .string && typ.is_ptr() {
 		// (&string)[i] => string
 		return string_type
 	}
 	if typ_sym.kind in [.byteptr, .string] {
 		return byte_type
 	}
-	if type_is_ptr(typ) {
+	if typ.is_ptr() {
 		// byte* => byte
 		// bytes[0] is a byte, not byte*
-		return type_deref(typ)
+		return typ.deref()
 	}
 	// TODO: remove when map_string is removed
 	if typ_sym.name == 'map_string' {
@@ -453,10 +452,10 @@ pub fn (t &Table) value_type(typ Type) Type {
 }
 
 pub fn (t &Table) check(got, expected Type) bool {
-	got_idx := type_idx(got)
-	exp_idx := type_idx(expected)
-	// got_is_ptr := type_is_ptr(got)
-	exp_is_ptr := type_is_ptr(expected)
+	got_idx := got.idx()
+	exp_idx := expected.idx()
+	// got_is_ptr := got.is_ptr()
+	exp_is_ptr := expected.is_ptr()
 	// println('check: $got_type_sym.name, $exp_type_sym.name')
 	// # NOTE: use idxs here, and symbols below for perf
 	if got_idx == none_type_idx {
@@ -486,6 +485,16 @@ pub fn (t &Table) check(got, expected Type) bool {
 	// # NOTE: use symbols from this point on for perf
 	got_type_sym := t.get_type_symbol(got)
 	exp_type_sym := t.get_type_symbol(expected)
+	//
+	if exp_type_sym.kind == .interface_ {
+		mut info := exp_type_sym.info as Interface
+		// println('gen_types before')
+		// println(info.gen_types)
+		info.gen_types << got_type_sym.name
+		// println('adding gen_type $got_type_sym.name')
+		// println(info.gen_types)
+		return true
+	}
 	// allow enum value to be used as int
 	if (got_type_sym.is_int() && exp_type_sym.kind == .enum_) || (exp_type_sym.is_int() &&
 		got_type_sym.kind == .enum_) {
@@ -497,7 +506,7 @@ pub fn (t &Table) check(got, expected Type) bool {
 	// }
 	if got_type_sym.kind == .array_fixed && exp_type_sym.kind == .byteptr {
 		info := got_type_sym.info as ArrayFixed
-		if type_idx(info.elem_type) == byte_type_idx {
+		if info.elem_type.idx() == byte_type_idx {
 			return true
 		}
 	}

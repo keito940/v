@@ -7,10 +7,10 @@ import v.ast
 import v.table
 import v.token
 
-pub fn (var p Parser) expr(precedence int) ast.Expr {
+pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	// println('\n\nparser.expr()')
-	var typ := table.void_type
-	var node := ast.Expr{}
+	mut typ := table.void_type
+	mut node := ast.Expr{}
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false
 	// Prefix
@@ -29,6 +29,7 @@ pub fn (var p Parser) expr(precedence int) ast.Expr {
 		.chartoken {
 			node = ast.CharLiteral{
 				val: p.tok.lit
+				pos: p.tok.position()
 			}
 			p.next()
 		}
@@ -39,6 +40,7 @@ pub fn (var p Parser) expr(precedence int) ast.Expr {
 		.key_true, .key_false {
 			node = ast.BoolLiteral{
 				val: p.tok.kind == .key_true
+				pos: p.tok.position()
 			}
 			p.next()
 		}
@@ -67,7 +69,7 @@ pub fn (var p Parser) expr(precedence int) ast.Expr {
 			node = ast.None{}
 		}
 		.key_sizeof {
-			p.next()			// sizeof
+			p.next() // sizeof
 			p.check(.lpar)
 			if p.tok.lit == 'C' {
 				p.next()
@@ -102,7 +104,7 @@ pub fn (var p Parser) expr(precedence int) ast.Expr {
 				if p.peek_tok.kind == .pipe {
 					node = p.assoc()
 				} else if p.peek_tok.kind == .colon || p.tok.kind == .rcbr {
-					node = p.struct_init(true)					// short_syntax: true
+					node = p.struct_init(true) // short_syntax: true
 				} else if p.tok.kind == .name {
 					p.next()
 					lit := if p.tok.lit != '' { p.tok.lit } else { p.tok.kind.str() }
@@ -112,6 +114,11 @@ pub fn (var p Parser) expr(precedence int) ast.Expr {
 				}
 			}
 			p.check(.rcbr)
+		}
+		.key_fn {
+			// Anonymous function
+			node = p.anon_fn()
+			return node
 		}
 		else {
 			if p.tok.kind == .comment {
@@ -151,6 +158,12 @@ pub fn (var p Parser) expr(precedence int) ast.Expr {
 				pos: pos
 			}
 		} else if p.tok.kind.is_infix() {
+			// return early for deref assign `*x = 2` goes to prefix expr
+			if p.tok.kind == .mul && p.tok.line_nr != p.prev_tok.line_nr && p.peek_tok2.kind ==
+				.assign {
+				return node
+			}
+			// continue on infix expr
 			node = p.infix_expr(node)
 		} else if p.tok.kind in [.inc, .dec] {
 			// Postfix
@@ -168,29 +181,27 @@ pub fn (var p Parser) expr(precedence int) ast.Expr {
 	return node
 }
 
-fn (var p Parser) infix_expr(left ast.Expr) ast.Expr {
+fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	op := p.tok.kind
 	// mut typ := p.
 	// println('infix op=$op.str()')
 	precedence := p.tok.precedence()
 	pos := p.tok.position()
 	p.next()
-	var right := ast.Expr{}
+	mut right := ast.Expr{}
 	if op == .key_is {
 		p.inside_is = true
 	}
 	right = p.expr(precedence)
-	var expr := ast.Expr{}
-	expr = ast.InfixExpr{
+	return ast.InfixExpr{
 		left: left
 		right: right
 		op: op
 		pos: pos
 	}
-	return expr
 }
 
-fn (var p Parser) prefix_expr() ast.PrefixExpr {
+fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	pos := p.tok.position()
 	op := p.tok.kind
 	if op == .amp {

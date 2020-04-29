@@ -1,15 +1,13 @@
 module js
 
-import (
-	strings
-	v.ast
-	v.table
-	v.depgraph
-	v.token
-	v.pref
-	term
-	v.util
-)
+import strings
+import v.ast
+import v.table
+import v.depgraph
+import v.token
+import v.pref
+import term
+import v.util
 
 const (
 	//TODO
@@ -18,15 +16,15 @@ const (
 )
 
 struct JsGen {
-	out   			strings.Builder
+	table           &table.Table
+	definitions     strings.Builder
+	pref            &pref.Preferences
+mut:
+	out             strings.Builder
 	namespaces		map[string]strings.Builder
 	namespaces_pub	map[string][]string
-	namespace 		string
-	table 			&table.Table
-	definitions 	strings.Builder
-	pref            &pref.Preferences
+	namespace       string
 	doc				&JsDoc
-	mut:
 	constants		strings.Builder // all global V constants
 	file			ast.File
 	tmp_count		int
@@ -98,7 +96,9 @@ pub fn (g mut JsGen) enter_namespace(n string) {
 		g.out = strings.new_builder(100)
 		g.indents[g.namespace] = 0
 		g.out.writeln('const $n = (function () {')
-	} else {
+	}
+	//
+	else {
 		g.out = g.namespaces[g.namespace]
 	}
 }
@@ -110,7 +110,7 @@ pub fn (g mut JsGen) escape_namespace() {
 
 pub fn (g mut JsGen) push_pub_var(s string) {
 	// Workaround until `m[key]<<val` works.
-	arr := g.namespaces_pub[g.namespace]
+	mut arr := g.namespaces_pub[g.namespace]
 	arr << s
 	g.namespaces_pub[g.namespace] = arr
 }
@@ -123,7 +123,7 @@ pub fn (g mut JsGen) find_class_methods(stmts []ast.Stmt) {
 					// Found struct method, store it to be generated along with the class.
 					class_name :=  g.table.get_type_symbol(it.receiver.typ).name
 					// Workaround until `map[key] << val` works.
-					arr := g.method_fn_decls[class_name]
+					mut arr := g.method_fn_decls[class_name]
 					arr << stmt
 					g.method_fn_decls[class_name] = arr
 				}
@@ -184,7 +184,8 @@ fn (g mut JsGen) to_js_typ(typ string) string {
 		}
 		'charptr' {
 			styp = 'string'
-		} else {
+		}
+		else {
 			if typ.starts_with('array_') {
 				styp = g.to_js_typ(typ.replace('array_', '')) + '[]'
 			} else if typ.starts_with('map_') {
@@ -594,7 +595,7 @@ fn (g mut JsGen) gen_branch_stmt(it ast.BranchStmt) {
 }
 
 fn (g mut JsGen) gen_const_decl(it ast.ConstDecl) {
-	old_indent := g.indents[g.namespace]
+	// old_indent := g.indents[g.namespace]
 	for i, field in it.fields {
 		// TODO hack. Cut the generated value and paste it into definitions.
 		pos := g.out.len
@@ -689,7 +690,7 @@ fn (g mut JsGen) gen_method_decl(it ast.FnDecl) {
 			name = util.replace_op(name)
 		}
 
-		type_name := g.typ(it.return_type)
+		// type_name := g.typ(it.return_type)
 
 		// generate jsdoc for the function
 		g.writeln(g.doc.gen_fn(it))
@@ -764,10 +765,10 @@ fn (g mut JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		g.inside_loop = false
 		g.stmts(it.stmts)
 		g.writeln('}')
-	} else if it.kind == .array || table.type_is(it.cond_type, .variadic) {
+	} else if it.kind == .array || it.cond_type.flag_is(.variadic) {
 		// `for num in nums {`
 		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
-		styp := g.typ(it.val_type)
+		// styp := g.typ(it.val_type)
 		g.inside_loop = true
 		g.write('for (let $i = 0; $i < ')
 		g.expr(it.cond)
@@ -780,8 +781,8 @@ fn (g mut JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		g.writeln('}')
 	} else if it.kind == .map {
 		// `for key, val in map[string]int {`
-		key_styp := g.typ(it.key_type)
-		val_styp := g.typ(it.val_type)
+		// key_styp := g.typ(it.key_type)
+		// val_styp := g.typ(it.val_type)
 		key := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
 		g.write('for (let [$key, $it.val_var] of ')
 		g.expr(it.cond)
@@ -817,7 +818,7 @@ fn (g mut JsGen) gen_for_stmt(it ast.ForStmt) {
 }
 
 fn (g mut JsGen) fn_args(args []table.Arg, is_variadic bool) {
-	no_names := args.len > 0 && args[0].name == 'arg_1'
+	// no_names := args.len > 0 && args[0].name == 'arg_1'
 	for i, arg in args {
 		is_varg := i == args.len - 1 && is_variadic
 		if is_varg {
@@ -860,10 +861,10 @@ fn (g mut JsGen) gen_go_stmt(node ast.GoStmt) {
 }
 
 fn (g mut JsGen) gen_map_init_expr(it ast.MapInit) {
-	key_typ_sym := g.table.get_type_symbol(it.key_type)
-	value_typ_sym := g.table.get_type_symbol(it.value_type)
-	key_typ_str := key_typ_sym.name.replace('.', '__')
-	value_typ_str := value_typ_sym.name.replace('.', '__')
+	// key_typ_sym := g.table.get_type_symbol(it.key_type)
+	// value_typ_sym := g.table.get_type_symbol(it.value_type)
+	// key_typ_str := key_typ_sym.name.replace('.', '__')
+	// value_typ_str := value_typ_sym.name.replace('.', '__')
 	if it.vals.len > 0 {
 		g.writeln('new Map([')
 		g.inc_indent()

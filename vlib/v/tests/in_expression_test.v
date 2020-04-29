@@ -21,14 +21,14 @@ fn test_in_expression() {
 	assert a == false
 	a = true && 3 in arr1
 	assert a == false
-	a = true && !(2 in arr2)
+	a = true && 2 !in arr2
 	assert a == false
-	a = true && !(3 in arr2)
+	a = true && 3 !in arr2
 	assert a == true
 
-	a = true && (2 !in arr2)
+	a = true && 2 !in arr2
 	assert a == false
-	a = true && (3 !in arr2)
+	a = true && 3 !in arr2
 	assert a == true
 
 	a = 1 in arr1 && true
@@ -88,20 +88,38 @@ fn test_in_expression_with_string() {
 	assert a == false
 	a = true && 'abc' in arr1
 	assert a == false
-	a = true && !('bc' in arr2)
+	a = true && 'bc' !in arr2
 	assert a == false
-	a = true && !('abc' in arr2)
+	a = true && 'abc' !in arr2
 	assert a == true
 
-	a = true && ('bc' !in arr2)
+	a = true && 'bc' !in arr2
 	assert a == false
-	a = true && ('abc' !in arr2)
+	a = true && 'abc' !in arr2
 	assert a == true
 
 	a = 'ab' in arr1 && true
 	assert a == true
 	a = 'ab' in arr1 && false
 	assert a == false
+}
+
+fn test_in_expression_in_map() {
+	m := {
+		'one': 1
+		'two': 2
+		'three': 3
+	}
+	assert 'one' in m
+	assert 'four' !in m
+}
+
+fn test_in_expression_in_string() {
+	s := 'abcd'
+	assert 'a' in s
+	assert 'ab' in s
+	assert 'abcd' in s
+	assert 'dbca' !in s
 }
 
 fn test_optimized_in_expression() {
@@ -119,14 +137,14 @@ fn test_optimized_in_expression() {
 	assert a == false
 	a = true && 3 in [1, 2]
 	assert a == false
-	a = true && !(2 in [0, 2])
+	a = true && 2 !in [0, 2]
 	assert a == false
-	a = true && !(3 in [0, 2])
+	a = true && 3 !in [0, 2]
 	assert a == true
 
-	a = true && (2 !in [0, 2])
+	a = true && 2 !in [0, 2]
 	assert a == false
-	a = true && (3 !in [0, 2])
+	a = true && 3 !in [0, 2]
 	assert a == true
 
 	a = 1 in [1, 2] && true
@@ -150,14 +168,14 @@ fn test_optimized_in_expression_with_enum() {
 	assert a == false
 	a = true && Colors.yellow in [.green, .blue]
 	assert a == false
-	a = true && !(Colors.blue in [.red, .blue])
+	a = true && Colors.blue !in [.red, .blue]
 	assert a == false
-	a = true && !(Colors.yellow in [.red, .blue])
+	a = true && Colors.yellow !in [.red, .blue]
 	assert a == true
 
-	a = true && (Colors.blue !in [.red, .blue])
+	a = true && Colors.blue !in [.red, .blue]
 	assert a == false
-	a = true && (Colors.yellow !in [.red, .blue])
+	a = true && Colors.yellow !in [.red, .blue]
 	assert a == true
 
 	a = Colors.green in [.green, .blue] && true
@@ -181,14 +199,14 @@ fn test_optimized_in_expression_with_string() {
 	assert a == false
 	a = true && 'abc' in ['ab', 'bc']
 	assert a == false
-	a = true && !('bc' in ['', 'bc'])
+	a = true && 'bc' !in ['', 'bc']
 	assert a == false
-	a = true && !('abc' in ['', 'bc'])
+	a = true && 'abc' !in ['', 'bc']
 	assert a == true
 
-	a = true && ('bc' !in ['', 'bc'])
+	a = true && 'bc' !in ['', 'bc']
 	assert a == false
-	a = true && ('abc' !in ['', 'bc'])
+	a = true && 'abc' !in ['', 'bc']
 	assert a == true
 
 	a = 'ab' in ['ab', 'bc'] && true

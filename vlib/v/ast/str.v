@@ -8,29 +8,29 @@ import v.table
 import strings
 
 pub fn (node &FnDecl) str(t &table.Table) string {
-	var f := strings.new_builder(30)
+	mut f := strings.new_builder(30)
 	if node.is_pub {
 		f.write('pub ')
 	}
-	var receiver := ''
+	mut receiver := ''
 	if node.is_method {
-		var styp := t.type_to_str(node.receiver.typ)
-		var m := if node.rec_mut { 'var ' } else { '' }
+		mut styp := t.type_to_str(node.receiver.typ)
+		mut m := if node.rec_mut { 'mut ' } else { '' }
 		if node.rec_mut {
-			styp = styp[1..]			// remove &
+			styp = styp[1..] // remove &
 		}
 		receiver = '($m$node.receiver.name $styp) '
 		/*
 		sym := t.get_type_symbol(node.receiver.typ)
 		name := sym.name.after('.')
 		mut m := if node.rec_mut { 'mut ' } else { '' }
-		if !node.rec_mut && table.type_is_ptr(node.receiver.typ) {
+		if !node.rec_mut && node.receiver.typ.is_ptr() {
 			m = '&'
 		}
 		receiver = '($node.receiver.name $m$name) '
-*/
+		*/
 	}
-	var name := node.name.after('.')
+	mut name := if node.is_anon { '' } else { node.name.after('.') }
 	if node.is_c {
 		name = 'C.$name'
 	}
@@ -47,7 +47,7 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ || (node.is_variadic &&
 			i == node.args.len - 2)
 		f.write(arg.name)
-		var s := t.type_to_str(arg.typ)
+		mut s := t.type_to_str(arg.typ)
 		if arg.is_mut {
 			f.write(' mut')
 			if s.starts_with('&') {
@@ -77,29 +77,51 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 // string representaiton of expr
 pub fn (x Expr) str() string {
 	match x {
-		Ident {
-			return it.name
+		BoolLiteral {
+			return it.val.str()
 		}
-		InfixExpr {
-			return '${it.left.str()} $it.op.str() ${it.right.str()}'
+		CastExpr {
+			return '${it.typname}(${it.expr.str()})'
 		}
-		PrefixExpr {
-			return it.op.str() + it.right.str()
+		CallExpr {
+			sargs := args2str(it.args)
+			if it.is_method {
+				return '${it.left.str()}.${it.name}($sargs)'
+			}
+			return '${it.mod}.${it.name}($sargs)'
 		}
 		CharLiteral {
 			return '`$it.val`'
 		}
-		IntegerLiteral {
-			return it.val
+		EnumVal {
+			return '.${it.val}'
 		}
 		FloatLiteral {
 			return it.val
 		}
-		StringLiteral {
-			return '"$it.val"'
+		Ident {
+			return it.name
+		}
+		IndexExpr {
+			return '${it.left.str()}[${it.index.str()}]'
+		}
+		IntegerLiteral {
+			return it.val
+		}
+		InfixExpr {
+			return '${it.left.str()} $it.op.str() ${it.right.str()}'
+		}
+		ParExpr {
+			return it.expr.str()
+		}
+		PrefixExpr {
+			return it.op.str() + it.right.str()
+		}
+		SelectorExpr {
+			return '${it.expr.str()}.${it.field}'
 		}
 		StringInterLiteral {
-			res := []string
+			mut res := []string{}
 			res << "'"
 			for i, val in it.vals {
 				res << val
@@ -119,33 +141,11 @@ pub fn (x Expr) str() string {
 			res << "'"
 			return res.join('')
 		}
-		BoolLiteral {
-			return it.val.str()
-		}
-		ParExpr {
-			return it.expr.str()
-		}
-		IndexExpr {
-			return '${it.left.str()}[${it.index.str()}]'
-		}
-		CastExpr {
-			return '${it.typname}(${it.expr.str()})'
-		}
-		SelectorExpr {
-			return '${it.expr.str()}.${it.field}'
+		StringLiteral {
+			return '"$it.val"'
 		}
 		TypeOf {
 			return 'typeof(${it.expr.str()})'
-		}
-		EnumVal {
-			return '.${it.val}'
-		}
-		CallExpr {
-			sargs := args2str(it.args)
-			if it.is_method {
-				return '${it.left.str()}.${it.name}($sargs)'
-			}
-			return '${it.mod}.${it.name}($sargs)'
 		}
 		else {
 			return '[unhandled expr type ${typeof(x)}]'
@@ -161,7 +161,7 @@ pub fn (a CallArg) str() string {
 }
 
 pub fn args2str(args []CallArg) string {
-	var res := []string
+	mut res := []string{}
 	for a in args {
 		res << a.str()
 	}
@@ -171,7 +171,7 @@ pub fn args2str(args []CallArg) string {
 pub fn (node Stmt) str() string {
 	match node {
 		AssignStmt {
-			var out := ''
+			mut out := ''
 			for i, ident in it.left {
 				var_info := ident.var_info()
 				if var_info.is_mut {
