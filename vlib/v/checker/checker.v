@@ -48,6 +48,13 @@ pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
 
 pub fn (mut c Checker) check(ast_file ast.File) {
 	c.file = ast_file
+	for i, ast_import in ast_file.imports {
+		for j in 0..i {
+			if ast_import.mod == ast_file.imports[j].mod {
+				c.error('module name `$ast_import.mod` duplicate', ast_import.pos)
+			}
+		}
+	}
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
 	}
@@ -967,7 +974,12 @@ pub fn (mut c Checker) return_stmt(return_stmt mut ast.Return) {
 }
 
 pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
-	for field in decl.fields {
+	for i, field in decl.fields {
+		for j in 0..i {
+			if field.name == decl.fields[j].name {
+				c.error('field name `$field.name` duplicate', field.pos)
+			}
+		}
 		if field.has_expr {
 			match field.expr {
 				ast.IntegerLiteral {}
@@ -1827,6 +1839,8 @@ pub fn (mut c Checker) if_expr(node mut ast.IfExpr) table.Type {
 		node.is_expr = true
 	}
 	node.typ = table.void_type
+	mut first_typ := 0
+	is_ternary := node.is_expr && node.branches.len >= 2 && node.has_else
 	for i, branch in node.branches {
 		if branch.cond is ast.ParExpr {
 			c.error('unnecessary `()` in an if condition. use `if expr {` instead of `if (expr) {`.',
@@ -1840,6 +1854,13 @@ pub fn (mut c Checker) if_expr(node mut ast.IfExpr) table.Type {
 				c.error('non-bool (`$typ_sym.name`) used as if condition', node.pos)
 			}
 		}
+		if is_ternary && i < node.branches.len - 1 && branch.stmts.len > 0 {
+			last_stmt := branch.stmts[branch.stmts.len - 1]
+			if last_stmt is ast.ExprStmt {
+				last_expr := last_stmt as ast.ExprStmt
+				first_typ = c.expr(last_expr.expr)
+			}
+		}
 		c.stmts(branch.stmts)
 	}
 	if node.has_else && node.is_expr {
@@ -1850,6 +1871,9 @@ pub fn (mut c Checker) if_expr(node mut ast.IfExpr) table.Type {
 					// type_sym := p.table.get_type_symbol(it.typ)
 					// p.warn('if expr ret $type_sym.name')
 					t := c.expr(it.expr)
+					if is_ternary && t != first_typ {
+						c.error('mismatched types `${c.table.type_to_str(first_typ)}` and `${c.table.type_to_str(t)}`', node.pos)
+					}					
 					node.typ = t
 					return t
 				}
