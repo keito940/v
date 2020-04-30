@@ -634,18 +634,21 @@ pub:
 
 pub struct ArrayInit {
 pub:
-	pos       token.Position
-	exprs     []Expr
-	is_fixed  bool
-	has_val   bool
-	mod       string
-	len_expr  Expr
-	has_len   bool
-	has_cap   bool
-	cap_expr  Expr
+	pos             token.Position
+	exprs           []Expr
+	is_fixed        bool
+	has_val         bool
+	mod             string
+	len_expr        Expr
+	has_len         bool
+	has_cap         bool
+	cap_expr        Expr
 mut:
-	elem_type table.Type
-	typ       table.Type
+	is_interface    bool // array of interfaces e.g. `[]Animal` `[Dog{}, Cat{}]`
+	interface_types []table.Type // [Dog, Cat]
+	interface_type  table.Type // Animal
+	elem_type       table.Type
+	typ             table.Type
 }
 
 pub struct MapInit {
@@ -844,6 +847,82 @@ fn (expr Expr) position() token.Position {
 			return it.pos
 		}
 		// ast.TypeOf { }
+		else {
+			return token.Position{}
+		}
+	}
+}
+
+fn (stmt Stmt) position() token.Position {
+	match mut stmt {
+		AssertStmt {
+			return it.pos
+		}
+		AssignStmt {
+			return it.pos
+		}
+		// Attr {
+		// }
+		// Block {
+		// }
+		// BranchStmt {
+		// }
+		Comment {
+			return it.pos
+		}
+		CompIf {
+			return it.pos
+		}
+		ConstDecl {
+			return it.pos
+		}
+		// DeferStmt {
+		// }
+		EnumDecl {
+			return it.pos
+		}
+		ExprStmt {
+			return it.pos
+		}
+		FnDecl {
+			return it.pos
+		}
+		ForCStmt {
+			return it.pos
+		}
+		ForInStmt {
+			return it.pos
+		}
+		ForStmt {
+			return it.pos
+		}
+		// GlobalDecl {
+		// }
+		// GoStmt {
+		// }
+		// GotoLabel {
+		// }
+		// GotoStmt {
+		// }
+		// HashStmt {
+		// }
+		Import {
+			return it.pos
+		}
+		// InterfaceDecl {
+		// }
+		// Module {
+		// }
+		Return {
+			return it.pos
+		}
+		StructDecl {
+			return it.pos
+		}
+		// TypeDecl {
+		// }
+		// UnsafeStmt {
+		// }
 		else {
 			return token.Position{}
 		}
