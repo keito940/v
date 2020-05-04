@@ -77,6 +77,8 @@ fn test_string_interpolation_string_prefix() {
 }
 
 fn test_inttypes_string_interpolation() {
+	c := i8(-103)
+	uc := byte(217)
 	s := i16(-23456)
 	us := u16(54321)
 	i := -1622999040
@@ -86,4 +88,32 @@ fn test_inttypes_string_interpolation() {
 	assert '$s $us' == '-23456 54321'
 	assert '$ui $i' == '3421958087 -1622999040'
 	assert '$l $ul' == '-7694555558525237396 17234006112912956370'
+	assert '>${s:11}:${us:-13}<' == '>     -23456:54321        <'
+	assert '0x${ul:-19x}:${l:22d}' == '0xef2b7d4001165bd2   :  -7694555558525237396'
+	assert '${c:5}${uc:-7}x' == ' -103217    x'
+}
+
+fn test_utf8_string_interpolation() {
+	a := 'à-côté'
+	st := 'Sträßle'
+	m := '10€'
+	assert '$a $st $m' == 'à-côté Sträßle 10€'
+	assert '>${a:10}< >${st:-8}< >${m:5}<-' == '>    à-côté< >Sträßle < >  10€<-'
+	e := '\u20AC' // Eurosign
+	// TODO: this fails with MSVC and tcc
+	// assert '100.00 $e' == '100.00 €'
+}
+
+struct S {
+	v1 int
+	v2 f64
+}
+
+fn (s S) str() string {
+	return '[${s.v1}, ${s.v2:.3f}]'
+}
+
+fn test_string_interpolation_str_evaluation() {
+	mut x := S{17, 13.455893}
+	assert '$x' == '[17, 13.456]'
 }
