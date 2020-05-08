@@ -65,6 +65,14 @@ fn modify_array(a mut []int) {
 	// a << 888
 }
 
+fn modify_array2(mut a []int) {
+	a[0] = 10
+	for i in 0 .. a.len {
+		a[i] = a[i] * 2
+	}
+	// a << 888
+}
+
 fn test_mut_array() {
 	mut nums := [1, 2, 3]
 	modify_array(mut nums)
@@ -103,55 +111,6 @@ fn test_mut_ptr() {
 	assert buf[0] == 77
 }
 
-fn high_fn(f fn(int) int) {
-	x := f(111)
-	println('x == $x')
-}
-
-fn high_fn_no_ret(f fn(int)) {
-	f(111)
-}
-
-fn high_fn_array(f fn(a []int) []int) {
-
-}
-
-fn high_fn_multi_return(a int, b fn (c []int, d []string) ([]int, []string)) {
-
-}
-
-fn sqr(x int) int {
-	return x * x
-}
-
-fn test_fns() {
-	// no asserts for now, just test function declarations above
-	high_fn(sqr)
-}
-
-fn test_anon_fn() {
-	f1 := fn(a int){
-		println('hello from f1')
-	}
-	f1(1)
-
-	f2 := fn(a int) int {
-		println('hello from f2')
-		return 10
-	}
-	f2res := f2(1)
-	println('f2res == $f2res')
-	// TODO/FIXME: assert bug? uncomment to see
-	// assert f2res == 10
-
-	high_fn(fn (x int) int {
-		return x + 1
-	})
-
-	high_fn_no_ret(fn (x int) {
-		println('hello $x')
-	})
-}
 
 fn assert_in_bool_fn(v int) bool {
 	assert v < 3

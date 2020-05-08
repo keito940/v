@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module builder
 
-import benchmark
+import time
 import os
 import v.pref
 import v.util
@@ -31,20 +31,26 @@ pub fn compile(command string, pref &pref.Preferences) {
 		println('builder.compile() pref:')
 		// println(pref)
 	}
-	mut tmark := benchmark.new_benchmark()
+	mut sw := time.new_stopwatch()
 	match pref.backend {
 		.c { b.compile_c() }
 		.js { b.compile_js() }
 		.x64 { b.compile_x64() }
 	}
 	if pref.is_stats {
-		tmark.stop()
-		println('compilation took: ' + tmark.total_duration().str() + 'ms')
+		println('compilation took: ${sw.elapsed().milliseconds()} ms')
 	}
 	if pref.is_test || pref.is_run {
 		b.run_compiled_executable_and_exit()
 	}
-	// v.finalize_compilation()
+	b.myfree()
+}
+
+// Temporary, will be done by -autofree
+fn (mut b Builder) myfree() {
+	// for file in b.parsed_files {
+	// }
+	b.parsed_files.free()
 }
 
 fn (mut b Builder) run_compiled_executable_and_exit() {
@@ -153,7 +159,7 @@ pub fn (v Builder) get_user_files() []string {
 	preludes_path := os.join_path(vroot, 'cmd', 'tools', 'preludes')
 	if v.pref.is_livemain || v.pref.is_liveshared {
 		user_files << os.join_path(preludes_path, 'live.v')
-    }
+	}
 	if v.pref.is_livemain {
 		user_files << os.join_path(preludes_path, 'live_main.v')
 	}

@@ -33,9 +33,10 @@ pub mut:
 
 pub struct Arg {
 pub:
-	name   string
-	is_mut bool
-	typ    Type
+	name      string
+	is_mut    bool
+	typ       Type
+	is_hidden bool // interface first arg
 }
 
 pub struct Var {
@@ -69,6 +70,21 @@ pub fn (f &Fn) signature() string {
 	}
 	sig += '_$f.return_type'
 	return sig
+}
+
+pub fn (f &Fn) is_same_method_as(func &Fn) bool {
+	if f.return_type != func.return_type {
+		return false
+	}
+	if f.args.len != func.args.len {
+		return false
+	}
+	for i in 1 .. f.args.len {
+		if f.args[i].typ != func.args[i].typ {
+			return false
+		}
+	}
+	return true
 }
 
 pub fn (t &Table) find_fn(name string) ?Fn {
@@ -145,15 +161,6 @@ pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 		ts = &t.types[ts.parent_idx]
 	}
 	return none
-}
-
-pub fn (t &Table) interface_add_type(inter mut Interface, typ Type) bool {
-	// TODO Verify `typ` implements `inter`
-	typ_sym := t.get_type_symbol(typ)
-	if typ !in inter.types && typ_sym.kind != .interface_ {
-		inter.types << typ
-	}
-	return true
 }
 
 [inline]
@@ -369,11 +376,12 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 
 pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon, has_decl bool) int {
 	name := if f.name.len == 0 { 'anon_fn_$f.signature()' } else { f.name }
+	anon := f.name.len == 0 || is_anon
 	return t.register_type_symbol(TypeSymbol{
 		kind: .function
 		name: name
 		info: FnType{
-			is_anon: f.name.len == 0 || is_anon
+			is_anon: anon
 			has_decl: has_decl
 			func: f
 		}
@@ -435,8 +443,12 @@ pub fn (t &Table) check(got, expected Type) bool {
 	exp_is_ptr := expected.is_ptr()
 	// println('check: $got_type_sym.name, $exp_type_sym.name')
 	// # NOTE: use idxs here, and symbols below for perf
-	if got_idx == none_type_idx {
-		// TODO
+	if got_idx == exp_idx {
+		// this is returning true even if one type is a ptr
+		// and the other is not, is this correct behaviour?
+		return true
+	}
+	if got_idx == none_type_idx && expected.flag_is(.optional) {
 		return true
 	}
 	// allow pointers to be initialized with 0. TODO: use none instead
@@ -465,17 +477,6 @@ pub fn (t &Table) check(got, expected Type) bool {
 	// # NOTE: use symbols from this point on for perf
 	got_type_sym := t.get_type_symbol(got)
 	exp_type_sym := t.get_type_symbol(expected)
-	// Handle expected interface
-	if exp_type_sym.kind == .interface_ {
-		mut info := exp_type_sym.info as Interface
-		return t.interface_add_type(info, got)
-	}
-	// Handle expected interface array
-	/*
-	if exp_type_sym.kind == .array && t.get_type_symbol(t.value_type(exp_idx)).kind == .interface_ {
-		return true
-	}
-	*/
 	//
 	if exp_type_sym.kind == .function && got_type_sym.kind == .int {
 		// TODO temporary
@@ -529,15 +530,17 @@ pub fn (t &Table) check(got, expected Type) bool {
 	if got_type_sym.kind == .function && exp_type_sym.kind == .function {
 		got_info := got_type_sym.info as FnType
 		exp_info := exp_type_sym.info as FnType
-		if got_info.func.signature() == exp_info.func.signature() {
+		if got_info.func.args.len == exp_info.func.args.len {
+			for i, got_arg in got_info.func.args {
+				exp_arg := exp_info.func.args[i]
+				if !t.check(got_arg.typ, exp_arg.typ) {
+					return false
+				}
+			}
 			return true
 		}
 	}
-	if got_idx != exp_idx {
-		// && got.typ.name != expected.typ.name*/
-		return false
-	}
-	return true
+	return false
 }
 
 // Once we have a module format we can read from module file instead

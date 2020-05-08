@@ -62,7 +62,12 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			node = p.if_expr()
 		}
 		.lsbr {
-			node = p.array_init()
+			if p.expecting_type {
+				// parse json.decode type (`json.decode([]User, s)`)
+				node = p.name_expr()
+			} else {
+				node = p.array_init()
+			}
 		}
 		.key_none {
 			p.next()
@@ -108,9 +113,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				} else if p.tok.kind == .name {
 					p.next()
 					lit := if p.tok.lit != '' { p.tok.lit } else { p.tok.kind.str() }
-					p.error('unexpected ‘$lit‘, expecting ‘:‘')
+					p.error('unexpected `$lit`, expecting `:`')
 				} else {
-					p.error('unexpected ‘$p.tok.lit‘, expecting struct key')
+					p.error('unexpected `$p.tok.lit`, expecting struct key')
 				}
 			}
 			p.check(.rcbr)
@@ -190,7 +195,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	p.next()
 	mut right := ast.Expr{}
 	if op == .key_is {
-		p.inside_is = true
+		p.expecting_type = true
 	}
 	right = p.expr(precedence)
 	return ast.InfixExpr{

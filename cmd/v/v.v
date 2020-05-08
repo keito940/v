@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module main
 
-import internal.help
+import help
 import os
 import os.cmdline
 import v.table
@@ -93,7 +93,7 @@ fn main() {
 				exit(1)
 			}
 			table := table.new_table()
-			println(doc.doc(args[1], table))
+			println(doc.doc(args[1], table, prefs))
 			return
 		}
 		else {}

@@ -6,6 +6,7 @@ module parser
 import v.ast
 import v.table
 import v.token
+import v.util
 
 fn (mut p Parser) struct_decl() ast.StructDecl {
 	start_pos := p.tok.position()
@@ -15,7 +16,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	}
 	is_union := p.tok.kind == .key_union
 	if p.tok.kind == .key_struct {
-		p.check(.key_struct)
+		p.next()
 	} else {
 		p.check(.key_union)
 	}
@@ -50,12 +51,12 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				comment = p.comment()
 			}
 			if p.tok.kind == .key_pub {
-				p.check(.key_pub)
+				p.next()
 				if p.tok.kind == .key_mut {
 					if pub_mut_pos != -1 {
 						p.error('redefinition of `pub mut` section')
 					}
-					p.check(.key_mut)
+					p.next()
 					pub_mut_pos = fields.len
 					is_field_pub = true
 					is_field_mut = true
@@ -74,7 +75,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				if mut_pos != -1 {
 					p.error('redefinition of `mut` section')
 				}
-				p.check(.key_mut)
+				p.next()
 				p.check(.colon)
 				mut_pos = fields.len
 				is_field_pub = false
@@ -84,7 +85,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				if global_pos != -1 {
 					p.error('redefinition of `global` section')
 				}
-				p.check(.key_global)
+				p.next()
 				p.check(.colon)
 				global_pos = fields.len
 				is_field_pub = true
@@ -123,6 +124,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			if p.tok.kind == .comment {
 				comment = p.comment()
 			}
+			// TODO merge table and ast Fields?
 			ast_fields << ast.StructField{
 				name: field_name
 				pos: field_pos
@@ -140,6 +142,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_pub: is_field_pub
 				is_mut: is_field_mut
 				is_global: is_field_global
+				attr: attr.name
 			}
 			// println('struct field $ti.name $field_name')
 		}
@@ -161,6 +164,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			is_union: is_union
 		}
 		mod: p.mod
+		is_public: is_pub
 	}
 	mut ret := 0
 	if p.builtin_mod && t.name in table.builtin_type_names {
@@ -199,12 +203,12 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	}
 	mut fields := []ast.StructInitField{}
 	mut i := 0
-	is_short_syntax := p.peek_tok.kind != .colon && p.tok.kind != .rcbr // `Vec{a,b,c}
+	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr // `Vec{a,b,c}
 	// p.warn(is_short_syntax.str())
-	for p.tok.kind != .rcbr {
+	for p.tok.kind != .rcbr && p.tok.kind != .rpar {
 		p.check_comment()
 		mut field_name := ''
-		if is_short_syntax {
+		if no_keys {
 			expr := p.expr(0)
 			// name will be set later in checker
 			fields << ast.StructInitField{
@@ -230,7 +234,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 		}
 		i++
 		if p.tok.kind == .comma {
-			p.check(.comma)
+			p.next()
 		}
 		p.check_comment()
 	}
@@ -246,12 +250,13 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			pos: first_pos.pos
 			len: last_pos.pos - first_pos.pos + last_pos.len
 		}
-		is_short: is_short_syntax
+		is_short: no_keys
 	}
 	return node
 }
 
 fn (mut p Parser) interface_decl() ast.InterfaceDecl {
+	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -275,11 +280,15 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		line_nr := p.tok.line_nr
 		name := p.check_name()
+		if util.contains_capital(name) {
+			p.error('interface methods cannot contain uppercase letters, use snake_case instead')
+		}
 		// field_names << name
 		args2, _ := p.fn_args()
 		mut args := [table.Arg{
 			name: 'x'
 			typ: typ
+			is_hidden: true
 		}]
 		args << args2
 		mut method := ast.FnDecl{
@@ -303,5 +312,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	return ast.InterfaceDecl{
 		name: interface_name
 		methods: methods
+		pos: start_pos
 	}
 }

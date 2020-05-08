@@ -7,7 +7,7 @@ import os
 import v.pref
 
 pub const (
-	v_version = '0.1.26'
+	v_version = '0.1.27'
 )
 
 // math.bits is needed by strconv.ftoa
@@ -150,7 +150,7 @@ pub fn launch_tool(is_verbose bool, tool_name string) {
 			if !tool_compilation.output.contains('Permission denied') {
 				err = '\n$tool_compilation.output'
 			}
-			eprintln('cannot compile ‘$tool_source: $err‘')
+			eprintln('cannot compile `$tool_source`: $err')
 			exit(1)
 		}
 	}

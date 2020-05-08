@@ -12,7 +12,7 @@ import v.util
 import term
 import os
 
-struct Parser {
+pub struct Parser {
 	scanner           &scanner.Scanner
 	file_name         string // "/home/user/hello.v"
 	file_name_dir     string // "/home/user"
@@ -32,7 +32,7 @@ mut:
 	mod               string // current module name
 	attr              string
 	attr_ctdefine     string
-	expr_mod          string
+	expr_mod          string // for constructing full type names in parse_type()
 	scope             &ast.Scope
 	global_scope      &ast.Scope
 	imports           map[string]string
@@ -42,7 +42,7 @@ mut:
 	inside_match      bool // to separate `match A { }` from `Struct{}`
 	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
 	is_stmt_ident     bool // true while the beginning of a statement is an ident/selector
-	inside_is         bool // `is Type`, expecting type
+	expecting_type    bool // `is Type`, expecting type
 }
 
 // for tests
@@ -104,7 +104,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	for {
 		if p.tok.kind == .eof {
 			if p.pref.is_script && !p.pref.is_test && p.mod == 'main' && !have_fn_main(stmts) {
-				stmts << ast.FnDecl {
+				stmts << ast.FnDecl{
 					name: 'main'
 					file: p.file_name
 					return_type: table.void_type
@@ -316,12 +316,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			return p.interface_decl()
 		}
 		.key_import {
-			node := p.import_stmt()
-			if node.len == 0 {
-				return p.top_stmt()
-			}
-			p.ast_imports << node
-			return node[0]
+			return p.import_stmt()
 		}
 		.key_global {
 			return p.global_decl()
@@ -355,7 +350,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 		}
 		else {
 			if p.pref.is_script && !p.pref.is_test {
-				p.scanner.add_fn_main_and_rescan(p.tok.pos-1)
+				p.scanner.add_fn_main_and_rescan(p.tok.pos - 1)
 				p.read_first_token()
 				return p.top_stmt()
 			} else {
@@ -469,7 +464,7 @@ pub fn (mut p Parser) stmt() ast.Stmt {
 			} else if p.tok.kind == .name && p.peek_tok.kind == .colon {
 				// `label:`
 				name := p.check_name()
-				p.check(.colon)
+				p.next()
 				return ast.GotoLabel{
 					name: name
 				}
@@ -495,6 +490,7 @@ fn (mut p Parser) attribute() ast.Attr {
 	}
 	mut name := p.check_name()
 	if p.tok.kind == .colon {
+		name += ':'
 		p.next()
 		if p.tok.kind == .name {
 			name += p.check_name()
@@ -584,12 +580,13 @@ pub fn (mut p Parser) parse_ident(is_c, is_js bool) ast.Ident {
 
 pub fn (mut p Parser) name_expr() ast.Expr {
 	mut node := ast.Expr{}
-	if p.inside_is {
-		p.inside_is = false
+	if p.expecting_type {
+		p.expecting_type = false
 		// get type position before moving to next
 		type_pos := p.tok.position()
+		typ := p.parse_type()
 		return ast.Type{
-			typ: p.parse_type()
+			typ: typ
 			pos: type_pos
 		}
 	}
@@ -601,6 +598,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	// `map[string]int` initialization
 	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
 		map_type := p.parse_map_type()
+		if p.tok.kind == .lcbr && p.peek_tok.kind == .rcbr {
+			p.next()
+			p.next()
+		}
 		return ast.MapInit{
 			typ: map_type
 		}
@@ -658,7 +659,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			expr = p.expr(0)
 			// TODO, string(b, len)
 			if p.tok.kind == .comma && to_typ.idx() == table.string_type_idx {
-				p.check(.comma)
+				p.next()
 				arg = p.expr(0) // len
 				has_arg = true
 			}
@@ -668,6 +669,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				expr: expr
 				arg: arg
 				has_arg: has_arg
+				pos: expr.position()
 			}
 			p.expr_mod = ''
 			return node
@@ -699,6 +701,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			pos: p.tok.position()
 			mod: mod
 		}
+	} else if p.peek_tok.kind == .colon && p.prev_tok.kind != .str_dollar {
+		// `foo(key:val, key2:val2)`
+		return p.struct_init(true) // short_syntax:true
 	} else {
 		node = p.parse_ident(is_c, is_js)
 	}
@@ -730,7 +735,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 	mut has_high := false
 	if p.tok.kind == .dotdot {
 		// [start..end] or [start..]
-		p.check(.dotdot)
+		p.next()
 		mut high := ast.Expr{}
 		if p.tok.kind != .rsbr {
 			has_high = true
@@ -885,7 +890,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		if p.tok.kind != .str_dollar {
 			continue
 		}
-		p.check(.str_dollar)
+		p.next()
 		exprs << p.expr(0)
 		mut efmt := []string{}
 		if p.tok.kind == .colon {
@@ -940,7 +945,7 @@ fn (mut p Parser) module_decl() ast.Module {
 	mut name := 'main'
 	is_skipped := p.tok.kind != .key_module
 	if !is_skipped {
-		p.check(.key_module)
+		p.next()
 		name = p.check_name()
 	}
 	full_mod := p.table.qualify_module(name, p.file_name)
@@ -952,47 +957,33 @@ fn (mut p Parser) module_decl() ast.Module {
 	}
 }
 
-fn (mut p Parser) parse_import() ast.Import {
+fn (mut p Parser) import_stmt() ast.Import {
+	p.check(.key_import)
 	pos := p.tok.position()
+	if p.tok.kind == .lpar {
+		p.error_with_pos('`import()` has been deprecated, use `import x` instead', pos)
+	}
 	mut mod_name := p.check_name()
 	mut mod_alias := mod_name
 	for p.tok.kind == .dot {
-		p.check(.dot)
+		p.next()
 		submod_name := p.check_name()
 		mod_name += '.' + submod_name
 		mod_alias = submod_name
 	}
 	if p.tok.kind == .key_as {
-		p.check(.key_as)
+		p.next()
 		mod_alias = p.check_name()
 	}
 	p.imports[mod_alias] = mod_name
 	p.table.imports << mod_name
-	return ast.Import{
+	node := ast.Import{
 		mod: mod_name
 		alias: mod_alias
 		pos: pos
 	}
-}
-
-fn (mut p Parser) import_stmt() []ast.Import {
-	p.check(.key_import)
-	mut imports := []ast.Import{}
-	if p.tok.kind == .lpar {
-		p.warn('`import()` has been deprecated, use `import x` instead. run `v fmt` to handle the transition')
-		p.check(.lpar)
-		for p.tok.kind != .rpar {
-			imports << p.parse_import()
-			if p.tok.kind == .comment {
-				p.comment()
-			}
-		}
-		p.check(.rpar)
-	} else {
-		// p.warn('`import module` has been deprecated, use `import ( module )` instead')
-		imports << p.parse_import()
-	}
-	return imports
+	p.ast_imports << node
+	return node
 }
 
 fn (mut p Parser) const_decl() ast.ConstDecl {
@@ -1048,7 +1039,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 		expr := p.expr(0)
 		exprs << expr
 		if p.tok.kind == .comma {
-			p.check(.comma)
+			p.next()
 		} else {
 			break
 		}
@@ -1062,8 +1053,8 @@ fn (mut p Parser) return_stmt() ast.Return {
 
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`
 fn (mut p Parser) global_decl() ast.GlobalDecl {
-	if !p.pref.translated && !p.pref.is_livemain && !p.builtin_mod && !p.pref.building_v && p.mod !=
-		'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals {
+	if !p.pref.translated && !p.pref.is_livemain && !p.builtin_mod && !p.pref.building_v &&
+		p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals {
 		p.error('use `v --enable-globals ...` to enable globals')
 	}
 	p.next()
@@ -1180,7 +1171,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	}
 	first_type := p.parse_type() // need to parse the first type before we can check if it's `type A = X | Y`
 	if p.tok.kind == .pipe {
-		p.check(.pipe)
+		p.next()
 		sum_variants << first_type
 		// type SumType = A | B | c
 		for {
@@ -1197,6 +1188,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			info: table.SumType{
 				variants: sum_variants
 			}
+			is_public: is_pub
 		})
 		return ast.SumTypeDecl{
 			name: name
@@ -1215,6 +1207,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		info: table.Alias{
 			foo: ''
 		}
+		is_public: is_pub
 	})
 	return ast.AliasTypeDecl{
 		name: name
@@ -1242,7 +1235,7 @@ fn (mut p Parser) assoc() ast.Assoc {
 		expr := p.expr(0)
 		vals << expr
 		if p.tok.kind == .comma {
-			p.check(.comma)
+			p.next()
 		}
 		if p.tok.kind == .rcbr {
 			break

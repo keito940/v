@@ -52,14 +52,16 @@ string _STR(const char *fmt, int nfmts, ...) {
 				else _STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+8, va_arg(argptr, int));
 			} else if (fup >= 'E' && fup <= 'G') { // floating point
 				_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+10, va_arg(argptr, double));
+			} else if (f == 'p') {
+				_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+14, va_arg(argptr, void*));
 			} else if (f == 's') { // v string
 				string s = va_arg(argptr, string);
 				if (fmt[k-4] == '*') { // %*.*s
 					int fwidth = va_arg(argptr, int);
 					if (fwidth < 0)
-						fwidth -= (s.len - utf8_str_len(s));
+						fwidth -= (s.len - utf8_str_visible_length(s));
 					else
-						fwidth += (s.len - utf8_str_len(s));
+						fwidth += (s.len - utf8_str_visible_length(s));
 					_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+fwidth-4, fwidth, s.len, s.str);
 				} else { // %.*s
 					_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k+s.len-4, s.len, s.str);
@@ -68,8 +70,7 @@ string _STR(const char *fmt, int nfmts, ...) {
 				//v_panic(tos3('Invaid format specifier'));
 			}
 		} else {
-			if (k)
-				_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k);
+			_STR_PRINT_ARG(fmt, &buf, &nbytes, &memsize, k);
 		}
 		fmt += k+1;
 	}

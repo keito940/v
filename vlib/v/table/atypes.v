@@ -26,6 +26,7 @@ mut:
 	name       string
 	methods    []Fn
 	mod        string
+	is_public  bool
 }
 
 pub enum TypeFlag {
@@ -129,6 +130,12 @@ pub fn new_type_ptr(idx, nr_muls int) Type {
 	return (nr_muls << 16) | u16(idx)
 }
 
+// built in pointers (voidptr, byteptr, charptr)
+[inline]
+pub fn (typ Type) is_pointer() bool {
+	return typ.idx() in pointer_type_idxs
+}
+
 [inline]
 pub fn (typ Type) is_float() bool {
 	return typ.idx() in float_type_idxs
@@ -188,7 +195,8 @@ pub const (
 	signed_integer_type_idxs   = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx]
 	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx]
 	float_type_idxs            = [f32_type_idx, f64_type_idx]
-	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
+	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx,
+		i64_type_idx, byte_type_idx,
 		u16_type_idx,
 		u32_type_idx,
 		u64_type_idx,
@@ -546,7 +554,7 @@ pub:
 // NB: FExpr here is a actually an ast.Expr .
 // It should always be used by casting to ast.Expr, using ast.fe2ex()/ast.ex2fe()
 // That hack is needed to break an import cycle between v.ast and v.table .
-type FExpr = byteptr | voidptr
+pub type FExpr = byteptr | voidptr
 
 pub struct Field {
 pub:
@@ -631,6 +639,26 @@ pub fn (table &Table) type_to_str(t Type) string {
 	}
 	*/
 	return res
+}
+
+pub fn(t &Table) fn_to_str(func &Fn) string {
+	mut sb := strings.new_builder(20)
+	sb.write('${func.name}(')
+	for i in 1 .. func.args.len {
+		arg := func.args[i]
+		sb.write('$arg.name')
+		if i == func.args.len - 1 || func.args[i + 1].typ != arg.typ {
+			sb.write(' ${t.type_to_str(arg.typ)}')
+		}
+		if i != func.args.len - 1 {
+			sb.write(', ')
+		}
+	}
+	sb.write(')')
+	if func.return_type != table.void_type {
+		sb.write(' ${t.type_to_str(func.return_type)}')
+	}
+	return sb.str()
 }
 
 pub fn (t &TypeSymbol) has_method(name string) bool {
