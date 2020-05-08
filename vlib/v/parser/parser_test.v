@@ -1,14 +1,12 @@
 module parser
 
-import (
-	v.ast
-	v.gen
-	v.table
-	v.checker
-	//	v.eval
-	v.pref
-	term
-)
+import v.ast
+import v.gen
+import v.table
+import v.checker
+//import v.eval
+import v.pref
+import term
 
 fn test_eval() {
 	/*
@@ -42,7 +40,7 @@ fn test_eval() {
 		start_pos: 0
 		parent: 0
 	}
-	mut stmts := []ast.Stmt
+	mut stmts := []ast.Stmt{}
 	for input in inputs {
 		stmts << parse_stmt(input, table, scope)
 	}
@@ -79,7 +77,8 @@ x := 10
 '
 	table := &table.Table{}
 	vpref := &pref.Preferences{}
-	prog := parse_file(s, table, .skip_comments, vpref)
+	gscope := &ast.Scope{ parent: 0 }
+	prog := parse_file(s, table, .skip_comments, vpref, gscope)
 	mut checker := checker.new_checker(table, vpref)
 	checker.check(prog)
 	res := gen.cgen([prog], table, vpref)
@@ -104,13 +103,14 @@ fn test_one() {
 		start_pos: 0
 		parent: 0
 	}
-	mut e := []ast.Stmt
+	mut e := []ast.Stmt{}
 	for line in input {
 		e << parse_stmt(line, table, scope)
 	}
 	program := ast.File{
 		stmts: e
 		scope: scope
+		global_scope: scope
 	}
 	mut checker := checker.new_checker(table, vpref)
 	checker.check(program)
@@ -194,7 +194,7 @@ fn test_parse_expr() {
 	'-a + 1;',
 	'2 + 2;',
 	]
-	mut e := []ast.Stmt
+	mut e := []ast.Stmt{}
 	table := table.new_table()
 	vpref := &pref.Preferences{}
 	mut checker := checker.new_checker(table, vpref)
@@ -209,6 +209,7 @@ fn test_parse_expr() {
 	program := ast.File{
 		stmts: e
 		scope: scope
+		global_scope: scope
 	}
 	checker.check(program)
 	res := gen.cgen([program], table, vpref).after('#endif')

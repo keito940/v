@@ -12,36 +12,39 @@ fn test_const() {
 }
 
 fn test_float_equal_operator() {
-	mut a := f32(1)
+	b := f32(1.0)
+	mut a := f32(1.0)
 	a += 0.000001
 	a -= 0.000001
-	assert a == 1
-	assert !a.eqbit(1)
-	assert !(a != 1)
-	assert a.nebit(1)
+	assert a == b
+	assert !a.eqbit(1.0)
+	assert !(a != f32(1.0))
+	assert a.nebit(f32(1.0))
 	a += 0.000001
-	assert !(a < 1)
-	assert !a.ltbit(1)
+	assert !(a < 1.0)
+	assert !a.ltbit(1.0)
 	assert !(a <= 1)
 	assert !a.lebit(1)
 	assert a > 1
 	assert a.gtbit(1)
 	assert a >= 1
 	assert a.gebit(1)
+	assert -1 == 1 * -1
+	assert -1.0 == 1.0 * -1.0
 
 	a = f64(1)
 	a += 0.000001
 	a -= 0.000001
-	assert a == 1
-	assert !a.eqbit(1)
-	assert !(a != 1)
+	assert a == f32(1.0)
+	assert !a.eqbit(f32(1.0))
+	assert !(a != f32(1.0))
 	a += 0.000001
-	assert !(a < 1)
-	assert !a.ltbit(1)
-	assert !(a <= 1)
-	assert !a.lebit(1)
-	assert a > 1
-	assert a.gtbit(1)
+	assert !(a < f32(1))
+	assert !a.ltbit(f32(1))
+	assert !(a <= f32(1))
+	assert !a.lebit(f32(1))
+	assert a > f32(1)
+	assert a.gtbit(f32(1))
 	assert a >= 1
 	assert a.gebit(1)
 
@@ -68,6 +71,10 @@ fn test_str_methods() {
 	assert u32(-1).str() == '4294967295'
 	assert u64(1).str() == '1'
 	assert u64(-1).str() == '18446744073709551615'
+	assert voidptr(-1).str() == 'ffffffffffffffff'
+	assert voidptr(1).str() == '1'
+	assert byteptr(-1).str() == 'ffffffffffffffff'
+	assert byteptr(1).str() == '1'
 }
 
 fn test_and_precendence() {
@@ -95,6 +102,16 @@ fn test_xor_precendence() {
 	assert (1 ^ 0 <= 1) == ((1 ^ 0) <= 1)
 	assert (1 ^ 0 < 0) == ((1 ^ 0) < 0)
 	assert (1 ^ 0 > 1) == ((1 ^ 0) > 1)
+}
+
+fn test_left_shift_precendence() {
+	assert (2 << 4 | 3) == ((2 << 4) | 3)
+	assert (2 << 4 | 3) != (2 << (4 | 3))
+}
+
+fn test_right_shift_precendence() {
+	assert (256 >> 4 | 3) == ((256 >> 4) | 3)
+	assert (256 >> 4 | 3) != (256 >> (4 | 3))
 }
 
 fn test_i8_print() {

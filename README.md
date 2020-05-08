@@ -1,28 +1,25 @@
-<img width="80" src="https://raw.githubusercontent.com/donnisnoni95/v-logo/master/dist/v-logo.svg?sanitize=true">
+<div align="center">
+<p>
+    <img width="80" src="https://raw.githubusercontent.com/donnisnoni95/v-logo/master/dist/v-logo.svg?sanitize=true">
+</p>
+<h1>The V Programming Language</h1>
 
-# The V Programming Language
+[vlang.io](https://vlang.io) |
+[Docs](https://github.com/vlang/v/blob/master/doc/docs.md) |
+[Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) |
+[Speed](https://fast.vlang.io/) |
+[Contributing](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
 
-[![Build Status](https://github.com/vlang/v/workflows/CI/badge.svg)](https://github.com/vlang/v/commits/master)
-<a href='https://github.com/sponsors/medvednikov'><img src='https://camo.githubusercontent.com/da8bc40db5ed31e4b12660245535b5db67aa03ce/68747470733a2f2f696d672e736869656c64732e696f2f7374617469632f76313f6c6162656c3d53706f6e736f72266d6573736167653d254532253944254134266c6f676f3d476974487562'></a>
-<a href='https://patreon.com/vlang'><img src='https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fvlang%2Fpledges&style=for-the-badge' height='20'></a>
-[![Twitter handle][]][Twitter badge]
+</div>
+<div align="center">
 
-**V's backend has just been replaced on April 1, 15k lines of code were removed, some things are broken, we are working hard to fix them all by April 5.**
+[![Build Status][WorkflowBadge]][WorkflowUrl]
+[![Sponsor][SponsorBadge]][SponsorUrl]
+[![Patreon][PatreonBadge]][PatreonUrl]
+[![Discord][DiscordBadge]][DiscordUrl]
+[![Twitter][TwitterUrl]][TwitterBadge]
 
-https://vlang.io
-
-Documentation: [vlang.io/docs](https://vlang.io/docs)
-
-Changelog: [github.com/vlang/v/blob/master/CHANGELOG.md](https://github.com/vlang/v/blob/master/CHANGELOG.md)
-
-Speed Test: [fast.vlang.io](https://fast.vlang.io/) (monitors compilation speed for each commit to verify there are no speed regressions)
-
-Twitter: [twitter.com/v_language](https://twitter.com/v_language)
-
-Discord (primary community): [discord.gg/vlang](https://discord.gg/vlang)
-
-Installing V: [github.com/vlang/v#installing-v-from-source](https://github.com/vlang/v#installing-v-from-source)
-
+</div>
 
 ## Key Features of V
 
@@ -40,7 +37,7 @@ Installing V: [github.com/vlang/v#installing-v-from-source](https://github.com/v
 - Built-in ORM
 - C and JavaScript backends
 
-A stable 0.2 release is planned for March 2020. Right now V is in an alpha stage.
+A stable 0.2 release is planned for May 2020. Right now V is in an alpha stage.
 
 ## Installing V from source
 
@@ -190,14 +187,14 @@ Hello from V.js
 
 https://github.com/vlang/v/wiki/Troubleshooting
 
+[WorkflowBadge]: https://github.com/vlang/v/workflows/CI/badge.svg
+[DiscordBadge]: https://img.shields.io/discord/592103645835821068?label=Discord&logo=discord&logoColor=white
+[PatreonBadge]: https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fvlang%2Fpledges&label=Patreon
+[SponsorBadge]: https://camo.githubusercontent.com/da8bc40db5ed31e4b12660245535b5db67aa03ce/68747470733a2f2f696d672e736869656c64732e696f2f7374617469632f76313f6c6162656c3d53706f6e736f72266d6573736167653d254532253944254134266c6f676f3d476974487562
+[TwitterBadge]: https://twitter.com/v_language
 
-## Contributing
-
-Code structure:
-
-https://github.com/vlang/v/blob/master/CONTRIBUTING.md
-
-If you introduce a breaking change and rebuild V, you will no longer be able to use V to build itself. So it's a good idea to make a backup copy of a working compiler executable.
-
-[Twitter handle]: https://img.shields.io/twitter/follow/v_language.svg?style=social&label=Follow
-[Twitter badge]: https://twitter.com/v_language
+[WorkflowUrl]: https://github.com/vlang/v/commits/master
+[DiscordUrl]: https://discord.gg/vlang
+[PatreonUrl]: https://patreon.com/vlang
+[SponsorUrl]: https://github.com/sponsors/medvednikov
+[TwitterUrl]: https://img.shields.io/twitter/follow/v_language.svg?style=flatl&label=Follow&logo=twitter&logoColor=white&color=1da1f2

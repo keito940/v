@@ -46,7 +46,7 @@ pub fn (r mut Reader) read() ?[]string {
 
 // Once we have multi dimensional array
 // pub fn (r mut Reader) read_all() ?[][]string {
-// 	mut records := []string
+// 	mut records := []string{}
 // 	for {
 // 		record := r.read_record() or {
 // 			if error(err).error == err_eof.error {
@@ -77,6 +77,9 @@ fn (r mut Reader) read_line() ?string {
 				// no valid line endings found
 				return err_invalid_le
 			}
+		} else {
+			// No line ending on file
+			i = r.data.len-1
 		}
 	}
 	mut line := r.data[r.row_pos..i]
@@ -107,15 +110,18 @@ fn (r mut Reader) read_record() ?[]string {
 		}
 		break
 	}
-	mut fields := []string
+	mut fields := []string{}
 	mut i := -1
 	for {
 		// not quoted
 		if line[0] != `"` {
-			i = line.index(r.delimiter.str()) or {
+			// QTODO i = ...
+			j := line.index(r.delimiter.str()) or {
 				// last
+				fields << line[..line.len]
 				break
 			}
+			i = j
 			fields << line[..i]
 			line = line[i+1..]
 			continue
@@ -123,18 +129,19 @@ fn (r mut Reader) read_record() ?[]string {
 		// quoted
 		else {
 			line = line[1..]
-			if j := line.index('"') {
-				if j+1 == line.len {
-					// last record
-					fields << line[..j]
-					break
-				}
-				next := line[j+1]
-				if next == r.delimiter {
-					fields << line[..j]
-					line = line[j..]
-					continue
-				}
+			j := line.index('"') or {
+				break
+			}
+			if j+1 == line.len {
+				// last record
+				fields << line[..j]
+				break
+			}
+			next := line[j+1]
+			if next == r.delimiter {
+				fields << line[..j]
+				line = line[j..]
+				continue
 			}
 			line = line[1..]
 		}

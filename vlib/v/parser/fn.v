@@ -3,53 +3,79 @@
 // that can be found in the LICENSE file.
 module parser
 
-import (
-	v.ast
-	v.table
-	v.scanner
-)
+import v.ast
+import v.table
+import v.token
+import v.util
 
-pub fn (p mut Parser) call_expr(is_c bool, mod string) ast.CallExpr {
-	tok := p.tok
+pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
+	first_pos := p.tok.position()
 	name := p.check_name()
-	fn_name := if is_c { 'C.$name' } else if mod.len > 0 { '${mod}.$name' } else { name }
+	fn_name := if is_c {
+		'C.$name'
+	} else if is_js {
+		'JS.$name'
+	} else if mod.len > 0 {
+		'${mod}.$name'
+	} else {
+		name
+	}
+	if fn_name == 'json.decode' {
+		// Makes name_expr() parse the type (`User` in `json.decode(User, txt)`)`
+		p.expecting_type = true
+		p.expr_mod = ''
+	}
 	p.check(.lpar)
 	args := p.call_args()
-	mut or_stmts := []ast.Stmt
+	last_pos := p.tok.position()
+	p.check(.rpar)
+	pos := token.Position{
+		line_nr: first_pos.line_nr
+		pos: first_pos.pos
+		len: last_pos.pos - first_pos.pos + last_pos.len
+	}
+	mut or_stmts := []ast.Stmt{}
+	mut is_or_block_used := false
 	if p.tok.kind == .key_orelse {
 		p.next()
 		p.open_scope()
 		p.scope.register('err', ast.Var{
 			name: 'err'
 			typ: table.string_type
+			pos: p.tok.position()
+			is_used: true
 		})
 		p.scope.register('errcode', ast.Var{
 			name: 'errcode'
 			typ: table.int_type
+			pos: p.tok.position()
+			is_used: true
 		})
+		is_or_block_used = true
 		or_stmts = p.parse_block_no_scope()
 		p.close_scope()
 	}
 	node := ast.CallExpr{
 		name: fn_name
 		args: args
-		// tok: tok
 		mod: p.mod
-		pos: tok.position()
+		pos: pos
 		is_c: is_c
+		is_js: is_js
 		or_block: ast.OrExpr{
 			stmts: or_stmts
+			is_used: is_or_block_used
 		}
 	}
 	return node
 }
 
-pub fn (p mut Parser) call_args() []ast.CallArg {
-	mut args := []ast.CallArg
+pub fn (mut p Parser) call_args() []ast.CallArg {
+	mut args := []ast.CallArg{}
 	for p.tok.kind != .rpar {
 		mut is_mut := false
 		if p.tok.kind == .key_mut {
-			p.check(.key_mut)
+			p.next()
 			is_mut = true
 		}
 		e := p.expr(0)
@@ -61,42 +87,57 @@ pub fn (p mut Parser) call_args() []ast.CallArg {
 			p.check(.comma)
 		}
 	}
-	p.check(.rpar)
 	return args
 }
 
-fn (p mut Parser) fn_decl() ast.FnDecl {
-	// p.table.clear_vars()
-	p.open_scope()
+fn (mut p Parser) fn_decl() ast.FnDecl {
+	start_pos := p.tok.position()
 	is_deprecated := p.attr == 'deprecated'
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
 	}
 	p.check(.key_fn)
-	// C.
+	p.open_scope()
+	// C. || JS.
 	is_c := p.tok.kind == .name && p.tok.lit == 'C'
-	if is_c {
+	is_js := p.tok.kind == .name && p.tok.lit == 'JS'
+	if is_c || is_js {
 		p.next()
 		p.check(.dot)
 	}
 	// Receiver?
 	mut rec_name := ''
 	mut is_method := false
+	mut receiver_pos := token.Position{}
 	mut rec_type := table.void_type
 	mut rec_mut := false
-	mut args := []table.Arg
+	mut args := []table.Arg{}
 	if p.tok.kind == .lpar {
+		p.next() // (
 		is_method = true
-		p.next()
-		rec_name = p.check_name()
 		rec_mut = p.tok.kind == .key_mut
+		if rec_mut {
+			p.next() // `mut`
+		}
+		rec_start_pos := p.tok.position()
+		rec_name = p.check_name()
+		if !rec_mut {
+			rec_mut = p.tok.kind == .key_mut
+		}
+        
+		receiver_pos = rec_start_pos.extend(p.tok.position())
+		is_amp := p.tok.kind == .amp
+
 		// if rec_mut {
 		// p.check(.key_mut)
 		// }
 		// TODO: talk to alex, should mut be parsed with the type like this?
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
-		rec_type = p.parse_type()
+		rec_type = p.parse_type_with_mut(rec_mut)
+		if is_amp && rec_mut {
+			p.error('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`')
+		}
 		args << table.Arg{
 			name: rec_name
 			is_mut: rec_mut
@@ -108,8 +149,11 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 	if p.tok.kind == .name {
 		// TODO high order fn
 		name = p.check_name()
-		if !is_c && !p.pref.translated && scanner.contains_capital(name) {
+		if !is_js && !is_c && !p.pref.translated && util.contains_capital(name) {
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
+		}
+		if is_method && p.table.get_type_symbol(rec_type).has_method(name) {
+			p.error('duplicate method `$name`')
 		}
 	}
 	if p.tok.kind in [.plus, .minus, .mul, .div, .mod] {
@@ -117,25 +161,48 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 		p.next()
 	}
 	// <T>
-	if p.tok.kind == .lt {
+	is_generic := p.tok.kind == .lt
+	if is_generic {
 		p.next()
 		p.next()
 		p.check(.gt)
 	}
 	// Args
-	args2,is_variadic := p.fn_args()
+	args2, is_variadic := p.fn_args()
 	args << args2
-	for arg in args {
+	for i, arg in args {
+		if p.scope.known_var(arg.name) {
+			p.error('redefinition of parameter `$arg.name`')
+		}
 		p.scope.register(arg.name, ast.Var{
 			name: arg.name
 			typ: arg.typ
+			is_mut: arg.is_mut
+			pos: p.tok.position()
+			is_used: true
+			is_arg: true
 		})
+		// Do not allow `mut` with simple types
+		// TODO move to checker?
+		if arg.is_mut {
+			if i == 0 && is_method {
+				continue
+			}
+			sym := p.table.get_type_symbol(arg.typ)
+			if sym.kind !in [.array, .struct_, .map, .placeholder] && !arg.typ.is_ptr() {
+				p.error('mutable arguments are only allowed for arrays, maps, and structs\n' +
+					'return values instead: `fn foo(n mut int) {` => `fn foo(n int) int {`')
+			}
+		}
 	}
+	mut end_pos := p.prev_tok.position()
 	// Return type
 	mut return_type := table.void_type
 	if p.tok.kind.is_start_of_type() {
+		end_pos = p.tok.position()
 		return_type = p.parse_type()
 	}
+	ctdefine := p.attr_ctdefine
 	// Register
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec_type)
@@ -145,14 +212,20 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			args: args
 			return_type: return_type
 			is_variadic: is_variadic
+			is_generic: is_generic
+			is_pub: is_pub
+			ctdefine: ctdefine
 		})
-	}
-	else {
+	} else {
 		if is_c {
 			name = 'C.$name'
-		}
-		else {
+		} else if is_js {
+			name = 'JS.$name'
+		} else {
 			name = p.prepend_mod(name)
+		}
+		if _ := p.table.find_fn(name) {
+			p.fn_redefinition_error(name)
 		}
 		p.table.register_fn(table.Fn{
 			name: name
@@ -160,15 +233,22 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			return_type: return_type
 			is_variadic: is_variadic
 			is_c: is_c
+			is_js: is_js
+			is_generic: is_generic
+			is_pub: is_pub
+			ctdefine: ctdefine
 		})
 	}
-	mut stmts := []ast.Stmt
+	// Body
+	mut stmts := []ast.Stmt{}
 	no_body := p.tok.kind != .lcbr
+	body_start_pos := p.peek_tok.position()
 	if p.tok.kind == .lcbr {
-		stmts = p.parse_block()
+		stmts = p.parse_block_no_scope()
 	}
 	p.close_scope()
 	p.attr = ''
+	p.attr_ctdefine = ''
 	return ast.FnDecl{
 		name: name
 		stmts: stmts
@@ -181,36 +261,95 @@ fn (p mut Parser) fn_decl() ast.FnDecl {
 			name: rec_name
 			typ: rec_type
 		}
+		receiver_pos: receiver_pos
 		is_method: is_method
 		rec_mut: rec_mut
 		is_c: is_c
+		is_js: is_js
 		no_body: no_body
-		pos: p.tok.position()
+		pos: start_pos.extend(end_pos)
+		body_pos: body_start_pos
+		file: p.file_name
+		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
+		ctdefine: ctdefine
 	}
 }
 
-fn (p mut Parser) fn_args() ([]table.Arg,bool) {
+fn (mut p Parser) anon_fn() ast.AnonFn {
+	pos := p.tok.position()
+	p.check(.key_fn)
+	p.open_scope()
+	// TODO generics
+	args, is_variadic := p.fn_args()
+	for arg in args {
+		p.scope.register(arg.name, ast.Var{
+			name: arg.name
+			typ: arg.typ
+			pos: p.tok.position()
+			is_used: true
+			is_arg: true
+		})
+	}
+	mut return_type := table.void_type
+	if p.tok.kind.is_start_of_type() {
+		return_type = p.parse_type()
+	}
+	mut stmts := []ast.Stmt{}
+	no_body := p.tok.kind != .lcbr
+	if p.tok.kind == .lcbr {
+		stmts = p.parse_block_no_scope()
+	}
+	p.close_scope()
+	mut func := table.Fn{
+		args: args
+		is_variadic: is_variadic
+		return_type: return_type
+	}
+	name := 'anon_${p.tok.pos}_$func.signature()'
+	func.name = name
+	idx := p.table.find_or_register_fn_type(func, true, false)
+	typ := table.new_type(idx)
+	// name := p.table.get_type_name(typ)
+	return ast.AnonFn{
+		decl: ast.FnDecl{
+			name: name
+			stmts: stmts
+			return_type: return_type
+			args: args
+			is_variadic: is_variadic
+			is_method: false
+			is_anon: true
+			no_body: no_body
+			pos: pos
+			file: p.file_name
+		}
+		typ: typ
+	}
+}
+
+fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 	p.check(.lpar)
-	mut args := []table.Arg
+	mut args := []table.Arg{}
 	mut is_variadic := false
 	// `int, int, string` (no names, just types)
-	types_only := p.tok.kind in [.amp, .and] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) || p.peek_tok.kind == .rpar
+	types_only := p.tok.kind in [.amp, .and] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) ||
+		p.peek_tok.kind == .rpar
 	if types_only {
-		//p.warn('types only')
+		// p.warn('types only')
 		mut arg_no := 1
 		for p.tok.kind != .rpar {
 			arg_name := 'arg_$arg_no'
 			is_mut := p.tok.kind == .key_mut
 			if is_mut {
-				p.check(.key_mut)
+				p.next()
 			}
 			if p.tok.kind == .ellipsis {
-				p.check(.ellipsis)
+				p.next()
 				is_variadic = true
 			}
 			mut arg_type := p.parse_type()
 			if is_variadic {
-				arg_type = table.type_set(arg_type, .variadic)
+				arg_type = arg_type.set_flag(.variadic)
 			}
 			if p.tok.kind == .comma {
 				if is_variadic {
@@ -225,26 +364,29 @@ fn (p mut Parser) fn_args() ([]table.Arg,bool) {
 			}
 			arg_no++
 		}
-	}
-	else {
+	} else {
 		for p.tok.kind != .rpar {
+			mut is_mut := p.tok.kind == .key_mut
+			if is_mut {
+				p.next()
+			}
 			mut arg_names := [p.check_name()]
 			// `a, b, c int`
 			for p.tok.kind == .comma {
-				p.check(.comma)
+				p.next()
 				arg_names << p.check_name()
 			}
-			is_mut := p.tok.kind == .key_mut
-			// if is_mut {
-			// p.check(.key_mut)
-			// }
+			if p.tok.kind == .key_mut {
+				// TODO remove old syntax
+				is_mut = true
+			}
 			if p.tok.kind == .ellipsis {
-				p.check(.ellipsis)
+				p.next()
 				is_variadic = true
 			}
 			mut typ := p.parse_type()
 			if is_variadic {
-				typ = table.type_set(typ, .variadic)
+				typ = typ.set_flag(.variadic)
 			}
 			for arg_name in arg_names {
 				args << table.Arg{
@@ -263,9 +405,35 @@ fn (p mut Parser) fn_args() ([]table.Arg,bool) {
 		}
 	}
 	p.check(.rpar)
-	return args,is_variadic
+	return args, is_variadic
 }
 
 fn (p &Parser) fileis(s string) bool {
 	return p.file_name.contains(s)
+}
+
+fn (mut p Parser) fn_redefinition_error(name string) {
+	// Find where this function was already declared
+	// TODO
+	/*
+	for file in p.ast_files {
+
+	}
+	*/
+	p.error('redefinition of function `$name`')
+}
+
+fn have_fn_main(stmts []ast.Stmt) bool {
+	mut has_main_fn := false
+	for stmt in stmts {
+		match stmt {
+			ast.FnDecl {
+				if it.name == 'main' {
+					has_main_fn = true
+				}
+			}
+			else {}
+		}
+	}
+	return has_main_fn
 }

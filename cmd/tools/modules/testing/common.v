@@ -1,12 +1,18 @@
 module testing
 
-import (
-	os
-	term
-	benchmark
-	sync
-	v.pref
-)
+import os
+import term
+import benchmark
+import sync
+import v.pref
+
+pub struct TestMessageHandler {
+mut:
+	messages []string
+pub mut:
+	message_idx int
+	mtx &sync.Mutex
+}
 
 pub struct TestSession {
 pub mut:
@@ -18,10 +24,17 @@ pub mut:
 	failed        bool
 	benchmark     benchmark.Benchmark
 	show_ok_tests bool
+	message_handler &TestMessageHandler
+}
+
+pub fn (mh mut TestMessageHandler) append_message(msg string) {
+	mh.mtx.lock()
+	mh.messages << msg
+	mh.mtx.unlock()
 }
 
 pub fn new_test_session(_vargs string) TestSession {
-    mut skip_files := []string
+	mut skip_files := []string{}
 	skip_files << '_non_existing_'
 	$if solaris {
 		skip_files << "examples/gg/gg2.v"
@@ -37,16 +50,17 @@ pub fn new_test_session(_vargs string) TestSession {
 		skip_files: skip_files
 		vargs: vargs
 		show_ok_tests: !_vargs.contains('-silent')
+		message_handler: 0
 	}
 }
 
 pub fn (ts mut TestSession) init() {
-	ts.benchmark = benchmark.new_benchmark()
+	ts.benchmark = benchmark.new_benchmark_no_cstep()
 }
 
 pub fn (ts mut TestSession) test() {
 	ts.init()
-	mut remaining_files := []string
+	mut remaining_files := []string{}
 	for dot_relative_file in ts.files {
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.real_path(relative_file)
@@ -79,6 +93,10 @@ pub fn (ts mut TestSession) test() {
 	mut pool_of_test_runners := sync.new_pool_processor(sync.PoolProcessorConfig{
 		callback: worker_trunner
 	})
+	// for handling messages across threads
+	ts.message_handler = &TestMessageHandler{
+		mtx: sync.new_mutex()
+	}
 	pool_of_test_runners.set_shared_context(ts)
 	$if msvc {
 		// NB: MSVC can not be launched in parallel, without giving it
@@ -93,8 +111,25 @@ pub fn (ts mut TestSession) test() {
 	eprintln(term.h_divider('-'))
 }
 
+pub fn (m mut TestMessageHandler) display_message() {
+	m.mtx.lock()
+	defer {
+		m.messages.clear()
+		m.mtx.unlock()
+	}
+	for msg in m.messages {
+		m.message_idx++
+		eprintln(msg.
+			replace("TMP1", "${m.message_idx:1d}").
+			replace("TMP2", "${m.message_idx:2d}").
+			replace("TMP3", "${m.message_idx:3d}")
+		)
+	}
+}
+
 fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 	mut ts := &TestSession(p.get_shared_context())
+	defer { ts.message_handler.display_message() }
 	tmpd := os.temp_dir()
 	show_stats := '-stats' in ts.vargs.split(' ')
 	// tls_bench is used to format the step messages/timings
@@ -104,7 +139,7 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 		tls_bench.set_total_expected_steps(ts.benchmark.nexpected_steps)
 		p.set_thread_context(idx, tls_bench)
 	}
-	tls_bench.cstep = idx
+	tls_bench.no_cstep = true
 	dot_relative_file := p.get_string_item(idx)
 	relative_file := dot_relative_file.replace(ts.vroot + os.path_separator, '').replace('./', '')
 	file := os.real_path(relative_file)
@@ -124,14 +159,14 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 	// eprintln('>>> v cmd: $cmd')
 	ts.benchmark.step()
 	tls_bench.step()
-	if relative_file in ts.skip_files {
+	if relative_file.replace('\\', '/') in ts.skip_files {
 	   ts.benchmark.skip()
 	   tls_bench.skip()
-	   eprintln(tls_bench.step_message_skip(relative_file))
+	   ts.message_handler.append_message(tls_bench.step_message_skip(relative_file))
 	   return sync.no_result
 	}
 	if show_stats {
-		eprintln(term.h_divider('-'))
+		ts.message_handler.append_message(term.h_divider('-'))
 		status := os.system(cmd)
 		if status == 0 {
 			ts.benchmark.ok()
@@ -149,20 +184,20 @@ fn worker_trunner(p mut sync.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			eprintln(tls_bench.step_message_fail(relative_file))
+			ts.message_handler.append_message(tls_bench.step_message_fail(relative_file))
 			return sync.no_result
 		}
 		if r.exit_code != 0 {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			eprintln(tls_bench.step_message_fail('${relative_file}\n$r.output\n'))
+			ts.message_handler.append_message(tls_bench.step_message_fail('${relative_file}\n$r.output\n'))
 		}
 		else {
 			ts.benchmark.ok()
 			tls_bench.ok()
 			if ts.show_ok_tests {
-				eprintln(tls_bench.step_message_ok(relative_file))
+				ts.message_handler.append_message(tls_bench.step_message_ok(relative_file))
 			}
 		}
 	}
@@ -191,7 +226,7 @@ pub fn v_build_failing(zargs string, folder string) bool {
 	eprintln('v compiler args: "$vargs"')
 	mut session := new_test_session(vargs)
 	files := os.walk_ext(os.join_path(parent_dir, folder), '.v')
-	mut mains := []string
+	mut mains := []string{}
 	for f in files {
 		if !f.contains('modules') && !f.contains('preludes') {
 			$if windows {

@@ -12,6 +12,10 @@ fn test_all() {
 		eprintln('You can still do it by setting FORCE_VALGRIND_TEST=1 .')
 		exit(0)
 	}
+	if os.getenv('V_CI_MUSL').len > 0 {
+		eprintln('This test is disabled for musl.')
+		exit(0)
+	}
 	bench_message := 'memory leak checking with valgrind'
 	mut bench := benchmark.new_benchmark()
 	eprintln(term.header(bench_message, '-'))
@@ -33,7 +37,7 @@ fn test_all() {
 		full_test_path := os.real_path(test)
 		println('x.v: $wrkdir/x.v')
 		os.system('cp ${dir}/${test} $wrkdir/x.v') // cant run .vv file
-		res := os.exec('$vexe -cflags "-w" -verbose=3 -manual-free=false -csource keep -cg $wrkdir/x.v') or {
+		res := os.exec('$vexe -cflags "-w" -verbose=3 -autofree -csource keep -cg $wrkdir/x.v') or {
 			bench.fail()
 			eprintln(bench.step_message_fail('valgrind $test failed'))
 			continue

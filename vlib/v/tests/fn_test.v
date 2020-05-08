@@ -59,21 +59,29 @@ type actionf_p2 fn (voidptr, voidptr)
 // TODO
 fn modify_array(a mut []int) {
 	a[0] = 10
-	for i in 0..a.len {
+	for i in 0 .. a.len {
 		a[i] = a[i] * 2
 	}
-	//a << 888
+	// a << 888
+}
+
+fn modify_array2(mut a []int) {
+	a[0] = 10
+	for i in 0 .. a.len {
+		a[i] = a[i] * 2
+	}
+	// a << 888
 }
 
 fn test_mut_array() {
 	mut nums := [1, 2, 3]
 	modify_array(mut nums)
-	//assert nums.len == 4
+	// assert nums.len == 4
 	// println(nums)
 	assert nums[0] == 20
 	assert nums[1] == 4
 	assert nums[2] == 6
-	//assert nums[3] == 888
+	// assert nums[3] == 888
 	// workaround for // [91, 32, -33686272] windows bug
 	println(nums.clone())
 }
@@ -103,36 +111,6 @@ fn test_mut_ptr() {
 	assert buf[0] == 77
 }
 
-fn high_fn(f fn(int) int) {
-
-}
-
-fn high_fn_array(f fn(a []int) []int) {
-
-}
-
-fn high_fn_multi_return(a int, b fn (c []int, d []string) ([]int, []string)) {
-
-}
-
-fn sqr(x int) int {
-	return x * x
-}
-
-fn test_fns() {
-	// no asserts for now, just test function declarations above
-	high_fn(sqr)
-}
-
-
-fn test_anon_fn() {
-	/*
-	high_fn(fn (x int) int {
-		println('hello')
-		return x + 1
-	})
-	*/
-}
 
 fn assert_in_bool_fn(v int) bool {
 	assert v < 3
@@ -145,15 +123,20 @@ fn test_assert_in_bool_fn() {
 
 type MyFn fn (int) int
 fn test(n int) int {
-    return n + 1000
+	return n + 1000
 }
+
 struct MySt {
-    f MyFn
+	f MyFn
 }
 fn test_fn_type_call() {
-    mut arr := []MyFn
+    mut arr := []MyFn{}
     arr << MyFn(test)
-    assert arr[0](10) == 1010
+	// TODO: `arr[0](10)`
+	// assert arr[0](10) == 1010
+	x1 := arr[0]
+	x2 := x1(10)
+	assert x2 == 1010
 
     st := MySt{f:test}
     assert st.f(10) == 1010
@@ -161,6 +144,3 @@ fn test_fn_type_call() {
 	st1 := &MySt{f:test}
     assert st1.f(10) == 1010
 }
-
-
-

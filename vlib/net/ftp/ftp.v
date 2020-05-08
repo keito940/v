@@ -29,9 +29,9 @@ const (
 	OpenDataConnection = 150
 	CloseDataConnection = 226
 	CommandOk = 200
-	Denied = 550
+	denied = 550
 	PassiveMode = 227
-	Complete = 226
+	complete = 226
 )
 
 struct DTP {
@@ -42,7 +42,7 @@ mut:
 }
 
 fn (dtp DTP) read() []byte {
-	mut data := []byte
+	mut data := []byte{}
 	for {
 		buf, len := dtp.sock.recv(1024)
 		if len == 0 { break }
@@ -127,10 +127,7 @@ pub fn (ftp FTP) login(user, passwd string) bool {
 		return false
 	}
 
-	mut data := ''
-	mut code := 0
-
-	code, data = ftp.read()
+	mut code, data := ftp.read()
 	if code == LoggedIn {
 		return true
 	}
@@ -176,13 +173,13 @@ pub fn (ftp FTP) pwd() string {
 pub fn (ftp FTP) cd(dir string) {
 	ftp.write('CWD $dir') or { return }
 	mut code, mut data := ftp.read()
-	match code {
-		Denied {
+	match int(code) {
+		denied {
 			$if debug {
 				println('CD $dir denied!')
 			}
 		}
-		Complete {
+		complete {
 			code, data = ftp.read()
 		}
 		else {}
@@ -223,8 +220,9 @@ fn (ftp FTP) pasv() ?DTP {
 		return error('pasive mode not allowed')
 	}
 
-	dtp := new_dtp(data)
-
+	dtp := new_dtp(data) or {
+	   return error(err)
+	}
 	return dtp
 }
 
@@ -235,7 +233,7 @@ pub fn (ftp FTP) dir() ?[]string {
 
 	ftp.write('LIST') or {}
 	code, _ := ftp.read()
-	if code == Denied {
+	if code == denied {
 		return error('LIST denied')
 	}
 	if code != OpenDataConnection {
@@ -249,7 +247,7 @@ pub fn (ftp FTP) dir() ?[]string {
 	}
 	dtp.close()
 
-	mut dir := []string
+	mut dir := []string{}
 	sdir := string(byteptr(list_dir.data))
 	for lfile in sdir.split('\n') {
 		if lfile.len >1 {
@@ -269,7 +267,7 @@ pub fn (ftp FTP) get(file string) ?[]byte {
 	ftp.write('RETR $file') or {}
 	code, _ := ftp.read()
 
-	if code == Denied {
+	if code == denied {
 		return error('Permission denied')
 	}
 

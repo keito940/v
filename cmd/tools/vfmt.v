@@ -3,22 +3,20 @@
 // that can be found in the LICENSE file.
 module main
 
-import (
-	os
-	os.cmdline
-	v.ast
-	v.pref
-	v.fmt
-	v.util
-	v.parser
-	v.table
-	vhelp
-)
+import os
+import os.cmdline
+import v.ast
+import v.pref
+import v.fmt
+import v.util
+import v.parser
+import v.table
+import vhelp
 
 struct FormatOptions {
-	is_2       bool
 	is_l       bool
 	is_c       bool
+	is_js      bool
 	is_w       bool
 	is_diff    bool
 	is_verbose bool
@@ -29,30 +27,24 @@ struct FormatOptions {
 }
 
 const (
-	platform_and_file_extensions = [['windows', '_win.v', '_windows.v'],
-	['linux', '_lin.v', '_linux.v', '_nix.v'],
-	['macos', '_mac.v', '_darwin.v'],
-	['freebsd', '_bsd.v', '_freebsd.v'],
-	['netbsd', '_bsd.v', '_netbsd.v'],
-	['openbsd', '_bsd.v', '_openbsd.v'],
-	['solaris', '_solaris.v'],
-	['haiku', '_haiku.v'],
-	['qnx', '_qnx.v'],
-	]
-	FORMATTED_FILE_TOKEN = '\@\@\@' + 'FORMATTED_FILE: '
+	platform_and_file_extensions = [['windows', '_windows.v'], ['linux', '_lin.v',
+		'_linux.v', '_nix.v'], ['macos', '_mac.v', '_darwin.v'], ['freebsd', '_bsd.v', '_freebsd.v'],
+		['netbsd', '_bsd.v', '_netbsd.v'], ['openbsd', '_bsd.v', '_openbsd.v'], ['solaris', '_solaris.v'],
+		['haiku', '_haiku.v'], ['qnx', '_qnx.v']]
+	FORMATTED_FILE_TOKEN         = '\@\@\@' + 'FORMATTED_FILE: '
 )
 
 fn main() {
-	//if os.getenv('VFMT_ENABLE') == '' {
-		//eprintln('v fmt is disabled for now')
-		//exit(1)
-	//}
+	// if os.getenv('VFMT_ENABLE') == '' {
+	// eprintln('v fmt is disabled for now')
+	// exit(1)
+	// }
 	toolexe := os.executable()
 	util.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
-	args := join_flags_and_argument()
+	args := util.join_env_vflags_and_os_args()
 	foptions := FormatOptions{
-		is_2: '-2' in args
 		is_c: '-c' in args
+		is_js: '-js' in args
 		is_l: '-l' in args
 		is_w: '-w' in args
 		is_diff: '-diff' in args
@@ -82,32 +74,25 @@ fn main() {
 		eprintln('vfmt env_vflags_and_os_args: ' + args.str())
 		eprintln('vfmt possible_files: ' + possible_files.str())
 	}
-	mut files := []string
+	mut files := []string{}
 	for file in possible_files {
-		if foptions.is_2 {
-			if !file.ends_with('.v') && !file.ends_with('.vv') {
-				verror('v fmt -2 can only be used on .v or .vv files.\nOffending file: "$file" .')
-				continue
-			}
-		} else {
-			if !file.ends_with('.v') {
-				verror('v fmt can only be used on .v files.\nOffending file: "$file" .')
-				continue
-			}
+		if !file.ends_with('.v') && !file.ends_with('.vv') {
+			verror('v fmt can only be used on .v files.\nOffending file: "$file"')
+			continue
 		}
 		if !os.exists(file) {
-			verror('"$file" does not exist.')
+			verror('"$file" does not exist')
 			continue
 		}
 		files << file
 	}
 	if files.len == 0 {
-	    vhelp.show_topic('fmt')
+		vhelp.show_topic('fmt')
 		exit(0)
 	}
-	mut cli_args_no_files := []string
+	mut cli_args_no_files := []string{}
 	for a in os.args {
-		if !a in files {
+		if a !in files {
 			cli_args_no_files << a
 		}
 	}
@@ -153,29 +138,33 @@ fn main() {
 		}
 		exit(1)
 	}
-	println('vfmt done')
 }
 
 fn (foptions &FormatOptions) format_file(file string) {
-	prefs := pref.new_preferences()
+	mut prefs := pref.new_preferences()
+	prefs.is_fmt = util.is_fmt()
 	if foptions.is_verbose {
 		eprintln('vfmt2 running fmt.fmt over file: $file')
 	}
 	table := table.new_table()
-	file_ast := parser.parse_file(file, table, .parse_comments, prefs, &ast.Scope{parent: 0})
-	formatted_content := fmt.fmt(file_ast, table)
+	// checker := checker.new_checker(table, prefs)
+	file_ast := parser.parse_file(file, table, .parse_comments, prefs, &ast.Scope{
+		parent: 0
+	})
+	// checker.check(file_ast)
+	formatted_content := fmt.fmt(file_ast, table, foptions.is_debug)
 	file_name := os.file_name(file)
 	vfmt_output_path := os.join_path(os.temp_dir(), 'vfmt_' + file_name)
-	os.write_file(vfmt_output_path, formatted_content )
+	os.write_file(vfmt_output_path, formatted_content)
 	if foptions.is_verbose {
-		eprintln('vfmt2 fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
+		eprintln('fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
 	}
 	eprintln('${FORMATTED_FILE_TOKEN}${vfmt_output_path}')
 }
 
-fn print_compiler_options( compiler_params &pref.Preferences ) {
-	eprintln('         os: ' + compiler_params.os.str() )
-	eprintln('  ccompiler: $compiler_params.ccompiler' )
+fn print_compiler_options(compiler_params &pref.Preferences) {
+	eprintln('         os: ' + compiler_params.os.str())
+	eprintln('  ccompiler: $compiler_params.ccompiler')
 	eprintln('        mod: $compiler_params.mod ')
 	eprintln('       path: $compiler_params.path ')
 	eprintln('   out_name: $compiler_params.out_name ')
@@ -187,16 +176,16 @@ fn print_compiler_options( compiler_params &pref.Preferences ) {
 	eprintln('  is_script: $compiler_params.is_script ')
 }
 
-fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path string) {
+fn (foptions &FormatOptions) post_process_file(file, formatted_file_path string) {
 	if formatted_file_path.len == 0 {
 		return
 	}
 	if foptions.is_diff {
-		diff_cmd := find_working_diff_command() or {
+		diff_cmd := util.find_working_diff_command() or {
 			eprintln('No working "diff" CLI command found.')
 			return
 		}
-		os.system('$diff_cmd --minimal  --text   --unified=2 --show-function-line="fn " "$file" "$formatted_file_path" ')
+		println(util.color_compare_files(diff_cmd, file, formatted_file_path))
 		return
 	}
 	fc := os.read_file(file) or {
@@ -208,7 +197,7 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 		return
 	}
 	is_formatted_different := fc != formatted_fc
-	if foptions.is_c {
+	if foptions.is_c || foptions.is_js {
 		if is_formatted_different {
 			eprintln('File is not formatted: $file')
 			exit(2)
@@ -227,8 +216,7 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 				panic(err)
 			}
 			eprintln('Reformatted file: $file')
-		}
-		else {
+		} else {
 			eprintln('Already formatted file: $file')
 		}
 		return
@@ -236,20 +224,10 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 	print(formatted_fc)
 }
 
-fn find_working_diff_command() ?string {
-	for diffcmd in ['colordiff', 'diff', 'colordiff.exe', 'diff.exe'] {
-		p := os.exec('$diffcmd --version') or {
-			continue
-		}
-		if p.exit_code == 0 {
-			return diffcmd
-		}
-	}
-	return error('no working diff command found')
-}
 
-pub fn (f FormatOptions) str() string {
-	return 'FormatOptions{ ' + ' is_2: $f.is_2' + ' is_l: $f.is_l' + ' is_w: $f.is_w' + ' is_diff: $f.is_diff' + ' is_verbose: $f.is_verbose' + ' is_all: $f.is_all' + ' is_worker: $f.is_worker' + ' is_debug: $f.is_debug' + ' }'
+fn (f FormatOptions) str() string {
+	return 'FormatOptions{ is_l: $f.is_l' + ' is_w: $f.is_w' + ' is_diff: $f.is_diff' + ' is_verbose: $f.is_verbose' +
+		' is_all: $f.is_all' + ' is_worker: $f.is_worker' + ' is_debug: $f.is_debug' + ' }'
 }
 
 fn file_to_target_os(file string) string {
@@ -263,11 +241,11 @@ fn file_to_target_os(file string) string {
 	return ''
 }
 
-fn file_to_mod_name_and_is_module_file(file string) (string,bool) {
+fn file_to_mod_name_and_is_module_file(file string) (string, bool) {
 	mut mod_name := 'main'
 	mut is_module_file := false
 	flines := read_source_lines(file) or {
-		return mod_name,is_module_file
+		return mod_name, is_module_file
 	}
 	for fline in flines {
 		line := fline.trim_space()
@@ -279,7 +257,7 @@ fn file_to_mod_name_and_is_module_file(file string) (string,bool) {
 			break
 		}
 	}
-	return mod_name,is_module_file
+	return mod_name, is_module_file
 }
 
 fn read_source_lines(file string) ?[]string {
@@ -299,7 +277,7 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	all_files_in_pfolder := os.ls(pfolder) or {
 		panic(err)
 	}
-	mut vfiles := []string
+	mut vfiles := []string{}
 	for f in all_files_in_pfolder {
 		vf := os.join_path(pfolder, f)
 		if f.starts_with('.') || !f.ends_with('.v') || os.is_dir(vf) {
@@ -333,31 +311,6 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	return pfolder
 }
 
-//TODO Move join_flags_and_argument() and non_empty() into `cmd/internal` when v.mod work correctly
-//to prevent code duplication with `cmd/v` (cmd/v/flag.v)
-fn join_flags_and_argument() []string {
-	vosargs := os.getenv('VOSARGS')
-	if vosargs != '' {
-		return non_empty(vosargs.split(' '))
-	}
-
-	mut args := []string
-	vflags := os.getenv('VFLAGS')
-	if vflags != '' {
-		args << os.args[0]
-		args << vflags.split(' ')
-		if os.args.len > 1 {
-			args << os.args[1..]
-		}
-		return non_empty(args)
-	}
-
-	return non_empty(os.args)
-}
-fn non_empty(arg []string) []string {
-	return arg.filter(it != '')
-}
-
-fn verror(s string){
+fn verror(s string) {
 	util.verror('vfmt error', s)
 }

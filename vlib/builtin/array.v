@@ -7,17 +7,17 @@ import strings
 
 pub struct array {
 pub:
-// Using a void pointer allows to implement arrays without generics and without generating
+	element_size int
+pub mut:
+	data         voidptr// Using a void pointer allows to implement arrays without generics and without generating
 // extra code for every type.
-	data         voidptr
 	len          int
 	cap          int
-	element_size int
 }
 
 // Internal function, used by V (`nums := []int`)
-fn new_array(mylen int, cap int, elm_size int) array {
-	cap_ := if cap == 0 { 1 } else { cap }
+fn __new_array(mylen int, cap int, elm_size int) array {
+	cap_ := if cap < mylen { mylen } else { cap }
 	arr := array{
 		len: mylen
 		cap: cap_
@@ -27,25 +27,13 @@ fn new_array(mylen int, cap int, elm_size int) array {
 	return arr
 }
 
-// TODO
-pub fn make(len int, cap int, elm_size int) array {
-	return new_array(len, cap, elm_size)
-}
-
-/*
-struct Foo {
-	a []string
-	b [][]string
-}
-*/
-
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
-	cap_ := if cap == 0 { 1 } else { cap }
+	cap_ := if cap < len { len } else { cap }
 
 	arr := array{
 		len: len
-		cap: cap
+		cap: cap_
 		element_size: elm_size
 		data: vcalloc(cap_ * elm_size)
 	}
@@ -66,6 +54,7 @@ fn new_array_from_c_array_no_alloc(len, cap, elm_size int, c_array voidptr) arra
 }
 
 // Private function. Doubles array capacity if needed
+[inline]
 fn (a mut array) ensure_cap(required int) {
 	if required <= a.cap {
 		return
@@ -190,38 +179,6 @@ pub fn (a array) last() voidptr {
 	return byteptr(a.data) + (a.len - 1) * a.element_size
 }
 
-/*
-// array.left returns a new array using the same buffer as the given array
-// with the first `n` elements of the given array.
-fn (a array) left(n int) array {
-//	$if !no_bounds_checking? {
-//		if n < 0 {
-//			panic('array.left: index is negative (n == $n)')
-//		}
-//	}
-	if n >= a.len {
-		return a.slice(0, a.len)
-	}
-	return a.slice(0, n)
-}
-
-// array.right returns an array using same buffer as the given array
-// but starting with the element of the given array beyond the index `n`.
-// If `n` is bigger or equal to the length of the given array,
-// returns an empty array of the same type as the given array.
-fn (a array) right(n int) array {
-//	$if !no_bounds_checking? {
-//		if n < 0 {
-//			panic('array.right: index is negative (n == $n)')
-//		}
-//	}
-	if n >= a.len {
-		return new_array(0, 0, a.element_size)
-	}
-	return a.slice(n, a.len)
-}
-*/
-
 // array.slice returns an array using the same buffer as original array
 // but starting from the `start` element and ending with the element before
 // the `end` element of the original array with the length and capacity
@@ -253,6 +210,12 @@ fn (a array) slice(start, _end int) array {
 fn (a array) slice2(start, _end int, end_max bool) array {
 	end := if end_max { a.len } else { _end }
 	return a.slice(start, end)
+}
+
+// array.clone_static returns an independent copy of a given array
+// It should be used only in -autofree generated code.
+fn (a array) clone_static() array {
+	return a.clone()
 }
 
 // array.clone returns an independent copy of a given array
@@ -347,7 +310,7 @@ pub fn (a array) reverse() array {
 
 // pub fn (a []int) free() {
 [unsafe_fn]
-pub fn (a array) free() {
+pub fn (a &array) free() {
 	// if a.is_slice {
 	// return
 	// }
@@ -361,50 +324,9 @@ pub fn (a []string) str() string {
 	sb.write('[')
 	for i in 0..a.len {
 		val := a[i]
-		sb.write('"')
+		sb.write("\'")
 		sb.write(val)
-		sb.write('"')
-		if i < a.len - 1 {
-			sb.write(', ')
-		}
-	}
-	sb.write(']')
-	return sb.str()
-}
-
-// []int.str returns a string representation of the array of ints
-// => '[1, 2, 3]'
-pub fn (a []int) str() string {
-	mut sb := strings.new_builder(a.len * 13)
-	sb.write('[')
-	for i in 0..a.len {
-		val := a[i].str()
-		sb.write(val)
-		//println('"$val"')
-		if a[i] != 0 {
-			val.free()
-		}
-		if i < a.len - 1 {
-			sb.write(', ')
-		}
-	}
-	sb.write(']')
-	return sb.str()
-}
-
-// []bool.str returns a string representation of the array of bools
-// => '[true, true, false]'
-pub fn (a []bool) str() string {
-	mut sb := strings.new_builder(a.len * 3)
-	sb.write('[')
-	for i in 0..a.len {
-		val := a[i]
-		if val {
-			sb.write('true')
-		}
-		else {
-			sb.write('false')
-		}
+		sb.write("\'")
 		if i < a.len - 1 {
 			sb.write(', ')
 		}
@@ -605,7 +527,7 @@ pub fn compare_f32(a, b &f32) int {
 // a.pointers() returns a new array, where each element
 // is the address of the corresponding element in a.
 pub fn (a array) pointers() []voidptr {
-	mut res := []voidptr
+	mut res := []voidptr{}
 	for i in 0..a.len {
 		res << byteptr(a.data) + i * a.element_size
 	}

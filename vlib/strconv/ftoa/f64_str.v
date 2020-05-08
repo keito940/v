@@ -1,6 +1,6 @@
 /**********************************************************************
 *
-* f32 to string 
+* f32 to string
 *
 * Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
 * Use of this source code is governed by an MIT license
@@ -9,11 +9,11 @@
 * This file contains the f64 to string functions
 *
 * These functions are based on the work of:
-* Publication:PLDI 2018: Proceedings of the 39th ACM SIGPLAN 
-* Conference on Programming Language Design and ImplementationJune 2018 
+* Publication:PLDI 2018: Proceedings of the 39th ACM SIGPLAN
+* Conference on Programming Language Design and ImplementationJune 2018
 * Pages 270–282 https://doi.org/10.1145/3192366.3192369
 *
-* inspired by the Go version here: 
+* inspired by the Go version here:
 * https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
 *
 **********************************************************************/
@@ -28,14 +28,14 @@ mut:
 // dec64 is a floating decimal type representing m * 10^e.
 struct Dec64 {
 mut:
-	m u64 = u64(0)
+	m u64 = 0
 	e int = 0
 }
 
 // support union for convert f64 to u64
 union Uf64 {
 mut:
-	f f64 = f64(0)
+	f f64 = 0
 	u u64
 }
 
@@ -77,13 +77,20 @@ const(
 	maxexp64    = 2047
 )
 
-fn (d Dec64) get_string_64(neg bool, i_n_digit int) string {
-	n_digit          := i_n_digit + 1
+fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
+	mut n_digit          := i_n_digit + 1
+	pad_digit        := i_pad_digit + 1
 	mut out          := d.m
+	mut d_exp        := d.e
 	mut out_len      := decimal_len_64(out)
 	out_len_original := out_len
 
-	mut buf := [byte(0)].repeat(out_len + 6 + 1 +1) // sign + mant_len + . +  e + e_sign + exp_len(2) + \0
+	mut fw_zeros := 0
+	if pad_digit > out_len {
+		fw_zeros = pad_digit - out_len
+	}
+
+	mut buf := [byte(0)].repeat(out_len + 6 + 1 +1 + fw_zeros) // sign + mant_len + . +  e + e_sign + exp_len(2) + \0
 	mut i := 0
 
 	if neg {
@@ -96,18 +103,28 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int) string {
 		disp = 1
 	}
 
+	// rounding last used digit
 	if n_digit < out_len {
-		//println("orig: ${out_len_original}")
-		out += ten_pow_table_64[out_len - n_digit] + 1  // round to up
-		out /= ten_pow_table_64[out_len - n_digit]
+		//println("out:[$out]")
+		out += ten_pow_table_64[out_len - n_digit - 1] * 5   // round to up
+		out /= ten_pow_table_64[out_len - n_digit ]
+		//println("out1:[$out] ${d.m / ten_pow_table_64[out_len - n_digit ]}")
+		if d.m / ten_pow_table_64[out_len - n_digit ] < out {
+			d_exp += 1
+			n_digit += 1
+		}
+
+		//println("cmp: ${d.m/ten_pow_table_64[out_len - n_digit ]} ${out/ten_pow_table_64[out_len - n_digit ]}")
+
 		out_len = n_digit
+		//println("orig: ${out_len_original} new len: ${out_len} out:[$out]")
 	}
 
 	y := i + out_len
 	mut x := 0
 	for x < (out_len-disp-1) {
 		buf[y - x] = `0` + byte(out%10)
-		out /= 10 
+		out /= 10
 		i++
 		x++
 	}
@@ -123,6 +140,11 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int) string {
 		i++
 	}
 
+	for fw_zeros > 0 {
+		buf[i++] = `0`
+		fw_zeros--
+	}
+
 	/*
 	x=0
 	for x<buf.len {
@@ -135,7 +157,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int) string {
 	buf[i]=`e`
 	i++
 
-	mut exp := d.e + out_len_original - 1
+	mut exp := d_exp + out_len_original - 1
 	if exp < 0 {
 		buf[i]=`-`
 		i++
@@ -384,5 +406,30 @@ pub fn f64_to_str(f f64, n_digit int) string {
 		d = f64_to_decimal(mant, exp)
 	}
 	//println("${d.m} ${d.e}")
-	return d.get_string_64(neg, n_digit)
+	return d.get_string_64(neg, n_digit, 0)
+}
+
+// f64_to_str return a string in scientific notation with max n_digit after the dot
+pub fn f64_to_str_pad(f f64, n_digit int) string {
+	mut u1 := Uf64{}
+	u1.f = f
+	u := u1.u
+
+	neg   := (u>>(mantbits64+expbits64)) != 0
+	mant  := u & ((u64(1)<<mantbits64) - u64(1))
+	exp   := (u >> mantbits64) & ((u64(1)<<expbits64) - u64(1))
+	//println("s:${neg} mant:${mant} exp:${exp} float:${f} byte:${u1.u:016lx}")
+
+	// Exit early for easy cases.
+	if (exp == maxexp64) || (exp == 0 && mant == 0) {
+		return get_string_special(neg, exp == 0, mant == 0)
+	}
+
+	mut d, ok := f64_to_decimal_exact_int(mant, exp)
+	if !ok {
+		//println("to_decimal")
+		d = f64_to_decimal(mant, exp)
+	}
+	//println("DEBUG: ${d.m} ${d.e}")
+	return d.get_string_64(neg, n_digit, n_digit)
 }

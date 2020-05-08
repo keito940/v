@@ -101,7 +101,7 @@ fn new_image(w int, h int) Image {
 // write out a .ppm file
 fn (image Image) save_as_ppm(file_name string) {
 	npixels := image.width * image.height
-	mut f_out := os.create(file_name) or { exit }
+	mut f_out := os.create(file_name) or { panic(err) }
 	f_out.writeln('P3')
 	f_out.writeln('${image.width} ${image.height}')
 	f_out.writeln('255')
@@ -122,8 +122,8 @@ struct Ray {
 
 // material types, used in radiance()
 enum Refl_t {
-	diff,
-	spec,
+	diff
+	spec
 	refr
 }
 
@@ -247,8 +247,8 @@ const(
 
 struct Cache {
 mut:
-	sin_tab [cache_len]f64
-	cos_tab [cache_len]f64
+	sin_tab [65536]f64
+	cos_tab [65536]f64
 }
 
 fn new_tabs() Cache {
@@ -417,7 +417,7 @@ fn ray_trace(w int, h int, samps int, file_name string, scene_id int) Image {
 			for sy := 0; sy < 2; sy ++ {
 				for sx := 0; sx < 2; sx ++ {
 					r = Vec{0,0,0}
-					for s in 0..samps {
+					for _ in 0..samps {
 						r1 := v_2 * rand_f64()
 						dx := if r1 < v_1 { math.sqrt(r1) - v_1 } else { v_1 - math.sqrt(v_2 - r1) }
 
@@ -429,7 +429,7 @@ fn ray_trace(w int, h int, samps int, file_name string, scene_id int) Image {
                         r = r + radiance(Ray{cam.o+d.mult_s(140.0), d.norm()}, 0, scene_id).mult_s(samps1)
 					}
 					tmp_vec := Vec{clamp(r.x),clamp(r.y),clamp(r.z)}.mult_s(.25)
-					*ivec = *ivec + tmp_vec
+					(*ivec) = *ivec + tmp_vec
 				}
 			}
 		}
@@ -473,10 +473,11 @@ fn main() {
 	image := ray_trace(width, height, samples, file_name, scene_id)
 	t2:=time.ticks()
 
-	eprintln('\nRendering finished. Took: ${t2-t1:5d}ms')
+
+	eprintln('\nRendering finished. Took: ${(t2-t1):5}ms')
 
 	image.save_as_ppm( file_name )
 	t3:=time.ticks()
 
-	eprintln('Image saved as [${file_name}]. Took: ${t3-t2:5d}ms')
+	eprintln('Image saved as [${file_name}]. Took: ${(t3-t2):5}ms')
 }

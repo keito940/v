@@ -6,8 +6,6 @@ module rand
 
 fn C.rand() int
 
-fn C.srand(u32)
-
 pub fn seed(s int) {
 	C.srand(s)
 }
@@ -18,7 +16,7 @@ pub fn next(max int) int {
 
 // rand_r returns a pseudo-random number;
 // writes a result value to the seed argument.
-pub fn rand_r(seed mut int) int {
+pub fn rand_r(seed &int) int {
 	ns := *seed * 1103515245 + 12345
 	(*seed) = ns
 	return ns & 0x7fffffff

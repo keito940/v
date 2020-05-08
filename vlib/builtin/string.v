@@ -43,15 +43,16 @@ NB: A V string should be/is immutable from the point of view of
 
 
 pub struct string {
-	// mut:
-	// hash_cache int
 pub:
 	str byteptr // points to a C style 0 terminated string of bytes.
 	len int // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
+	is_lit bool
 }
+	// mut:
+	// hash_cache int
 
 pub struct ustring {
-pub:
+pub mut:
 	s     string
 	runes []int
 	len   int
@@ -104,6 +105,21 @@ pub fn tos3(s charptr) string {
 	}
 }
 
+pub fn tos_lit(s charptr) string {
+	return string{
+		str: byteptr(s)
+		len: C.strlen(s)
+		is_lit:true
+	}
+}
+
+
+// string.clone_static returns an independent copy of a given array
+// It should be used only in -autofree generated code.
+fn (a string) clone_static() string {
+	return a.clone()
+}
+
 pub fn (a string) clone() string {
 	mut b := string{
 		len: a.len
@@ -144,7 +160,7 @@ pub fn (s string) replace(rep, with string) string {
 	}
 	// TODO PERF Allocating ints is expensive. Should be a stack array
 	// Get locations of all reps within this string
-	mut idxs := []int
+	mut idxs := []int{}
 	mut idx := 0
 	for {
 		idx = s.index_after(rep, idx)
@@ -166,8 +182,8 @@ pub fn (s string) replace(rep, with string) string {
 	mut cur_idx := idxs[idx_pos]
 	mut b_i := 0
 	for i := 0; i < s.len; i++ {
-		// Reached the location of rep, replace it with "with"
 		if i == cur_idx {
+			// Reached the location of rep, replace it with "with"
 			for j in 0..with.len {
 				b[b_i] = with[j]
 				b_i++
@@ -180,8 +196,8 @@ pub fn (s string) replace(rep, with string) string {
 				cur_idx = idxs[idx_pos]
 			}
 		}
-		// Rep doesnt start here, just copy
 		else {
+			// Rep doesnt start here, just copy
 			b[b_i] = s[i]
 			b_i++
 		}
@@ -223,7 +239,7 @@ pub fn (s string) replace_each(vals []string) string {
 		return s
 	}
 	if vals.len % 2 != 0 {
-		println('string.replace_many(): odd number of strings')
+		println('string.replace_each(): odd number of strings')
 		return s
 	}
 	// `rep` - string to replace
@@ -231,7 +247,7 @@ pub fn (s string) replace_each(vals []string) string {
 	// Remember positions of all rep strings, and calculate the length
 	// of the new string to do just one allocation.
 	mut new_len := s.len
-	mut idxs := []RepIndex
+	mut idxs := []RepIndex{}
 	mut idx := 0
 	for rep_i := 0; rep_i < vals.len; rep_i += 2 {
 		// vals: ['rep1, 'with1', 'rep2', 'with2']
@@ -263,8 +279,8 @@ pub fn (s string) replace_each(vals []string) string {
 	mut cur_idx := idxs[idx_pos]
 	mut b_i := 0
 	for i := 0; i < s.len; i++ {
-		// Reached the location of rep, replace it with "with"
 		if i == cur_idx.idx {
+			// Reached the location of rep, replace it with "with"
 			rep := vals[cur_idx.val_idx]
 			with := vals[cur_idx.val_idx + 1]
 			for j in 0..with.len {
@@ -279,8 +295,8 @@ pub fn (s string) replace_each(vals []string) string {
 				cur_idx = idxs[idx_pos]
 			}
 		}
-		// Rep doesnt start here, just copy
 		else {
+			// Rep doesnt start here, just copy
 			b[b_i] = s.str[i]
 			b_i++
 		}
@@ -333,19 +349,14 @@ pub fn (s string) u64() u64 {
 
 // ==
 fn (s string) eq(a string) bool {
-	if isnil(s.str) {
+	if s.str == 0 {
 		// should never happen
 		panic('string.eq(): nil string')
 	}
 	if s.len != a.len {
 		return false
 	}
-	for i in 0..s.len {
-		if s[i] != a[i] {
-			return false
-		}
-	}
-	return true
+	return C.memcmp(s.str, a.str, a.len) == 0
 }
 
 // !=
@@ -412,7 +423,7 @@ The last returned element has the remainder of the string, even if
 the remainder contains more `delim` substrings.
 */
 pub fn (s string) split_nth(delim string, nth int) []string {
-	mut res := []string
+	mut res := []string{}
 	mut i := 0
 	if delim.len == 0 {
 		i = 1
@@ -463,7 +474,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 }
 
 pub fn (s string) split_into_lines() []string {
-	mut res := []string
+	mut res := []string{}
 	if s.len == 0 {
 		return res
 	}
@@ -744,12 +755,30 @@ pub fn (s string) to_lower() string {
 	return tos(b, s.len)
 }
 
+pub fn (s string) is_lower() bool {
+	for i in 0..s.len {
+		if s[i] >= `A` && s[i] <= `Z` {
+			return false
+		}
+	}
+	return true
+}
+
 pub fn (s string) to_upper() string {
 	mut b := malloc(s.len + 1)
 	for i in 0..s.len {
 		b[i] = C.toupper(s.str[i])
 	}
 	return tos(b, s.len)
+}
+
+pub fn (s string) is_upper() bool {
+	for i in 0..s.len {
+		if s[i] >= `a` && s[i] <= `z` {
+			return false
+		}
+	}
+	return true
 }
 
 pub fn (s string) capitalize() string {
@@ -761,14 +790,36 @@ pub fn (s string) capitalize() string {
 	return cap
 }
 
+pub fn (s string) is_capital() bool {
+	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
+		return false
+	}
+	for i in 1..s.len {
+		if s[i] >= `A` && s[i] <= `Z` {
+			return false
+		}
+	}
+	return true
+}
+
 pub fn (s string) title() string {
 	words := s.split(' ')
-	mut tit := []string
+	mut tit := []string{}
 	for word in words {
 		tit << word.capitalize()
 	}
 	title := tit.join(' ')
 	return title
+}
+
+pub fn (s string) is_title() bool {
+	words := s.split(' ')
+	for word in words {
+		if !word.is_capital() {
+			return false
+		}
+	}
+	return true
 }
 
 // 'hey [man] how you doin'
@@ -797,7 +848,7 @@ fn (ar []string) contains(val string) bool {
 
 // TODO generic
 fn (ar []int) contains(val int) bool {
-	for i, s in ar {
+	for s in ar {
 		if s == val {
 			return true
 		}
@@ -857,7 +908,7 @@ pub fn (s string) trim_left(cutset string) string {
 	}
 	cs_arr := cutset.bytes()
 	mut pos := 0
-	for pos <= s.len && s[pos] in cs_arr {
+	for pos < s.len && s[pos] in cs_arr {
 		pos++
 	}
 	return s.right(pos)
@@ -869,10 +920,10 @@ pub fn (s string) trim_right(cutset string) string {
 	}
 	cs_arr := cutset.bytes()
 	mut pos := s.len - 1
-	for pos >= -1 && s[pos] in cs_arr {
+	for pos >= 0 && s[pos] in cs_arr {
 		pos--
 	}
-	return s.left(pos + 1)
+	return if pos < 0 { '' } else { s.left(pos + 1) }
 }
 
 // fn print_cur_thread() {
@@ -916,6 +967,10 @@ pub fn (s mut []string) sort_by_len() {
 	s.sort_with_compare(compare_strings_by_len)
 }
 
+pub fn (s string) str() string {
+	return s
+}
+
 pub fn (s ustring) str() string {
    return s.s
 }
@@ -926,7 +981,7 @@ pub fn (s string) ustring() ustring {
 		// runes will have at least s.len elements, save reallocations
 		// TODO use VLA for small strings?
 
-		runes: new_array(0, s.len, sizeof(int))
+		runes: __new_array(0, s.len, sizeof(int))
 	}
 	for i := 0; i < s.len; i++ {
 		char_len := utf8_char_len(s.str[i])
@@ -944,7 +999,7 @@ __global g_ustring_runes []int
 
 pub fn (s string) ustring_tmp() ustring {
 	if g_ustring_runes.len == 0 {
-		g_ustring_runes = new_array(0, 128, sizeof(int))
+		g_ustring_runes = __new_array(0, 128, sizeof(int))
 	}
 	mut res := ustring{
 		s: s
@@ -992,7 +1047,7 @@ fn (u ustring) ge(a ustring) bool {
 pub fn (u ustring) add(a ustring) ustring {
 	mut res := ustring{
 		s: u.s + a.s
-		runes: new_array(0, u.s.len + a.s.len, sizeof(int))
+		runes: __new_array(0, u.s.len + a.s.len, sizeof(int))
 	}
 	mut j := 0
 	for i := 0; i < u.s.len; i++ {
@@ -1102,7 +1157,7 @@ pub fn (u ustring) at(idx int) string {
 	return u.substr(idx, idx + 1)
 }
 
-fn (u ustring) free() {
+fn (u &ustring) free() {
 	u.runes.free()
 }
 
@@ -1126,18 +1181,10 @@ pub fn (c byte) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
 
-pub fn (s string) free() {
+pub fn (s &string) free() {
+	if s.is_lit {return}
 	free(s.str)
 }
-
-/*
-fn (arr []string) free() {
-	for s in arr {
-		s.free()
-	}
-	C.free(arr.data)
-}
-*/
 
 // all_before('23:34:45.234', '.') == '23:34:45'
 pub fn (s string) all_before(dot string) string {
@@ -1171,7 +1218,7 @@ pub fn (a []string) join(del string) string {
 		return ''
 	}
 	mut len := 0
-	for i, val in a {
+	for val in a {
 		len += val.len + del.len
 	}
 	len -= del.len
@@ -1183,7 +1230,6 @@ pub fn (a []string) join(del string) string {
 	// Go thru every string and copy its every char one by one
 	for i, val in a {
 		for j in 0..val.len {
-			c := val[j]
 			res.str[idx] = val.str[j]
 			idx++
 		}
@@ -1286,24 +1332,15 @@ pub fn (s string) repeat(count int) string {
 // Hello there,
 // this is a string,
 //     Everything before the first | is removed
-pub fn (s string) strip_margin(del ...byte) string {
-	mut sep := `|`
-	if del.len >= 1 {
-		// This is a workaround. We can't directly index a var_args array.
-		// Only care about the first one, ignore the rest if more
-		for d in del {
-			// The delimiter is not allowed to be white-space. Will use default
-			if d.is_space() {
-				eprintln("Warning: `strip_margin` cannot use white-space as a delimiter")
-				eprintln("    Defaulting to `|`")
-			} else {
-				sep = d
-			}
-			break
-		}
-		if del.len != 1 {
-			eprintln("Warning: `strip_margin` only uses the first argument given")
-		}
+pub fn (s string) strip_margin() string {
+   return s.strip_margin_custom(`|`)
+}
+pub fn (s string) strip_margin_custom(del byte) string {
+	mut sep := del
+	if sep.is_space() {
+		eprintln("Warning: `strip_margin` cannot use white-space as a delimiter")
+		eprintln("    Defaulting to `|`")
+		sep = `|`
 	}
 	// don't know how much space the resulting string will be, but the max it
 	// can be is this big

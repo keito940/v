@@ -266,7 +266,7 @@ pub fn (nn u16) hex() string {
 	if nn == 0 {
 		return '0'
 	}
-	
+
 	mut n := nn
 	max := 5
 	mut buf := malloc(max + 1)
@@ -320,7 +320,7 @@ pub fn (nn u64) hex() string {
 	if nn == 0 {
 		return '0'
 	}
-	
+
 	mut n := nn
 	max := 18
 	mut buf := malloc(max + 1)
@@ -345,6 +345,14 @@ pub fn (nn i64) hex() string {
 	return u64(nn).hex()
 }
 
+pub fn (nn voidptr) str() string {
+	return u64(nn).hex()
+}
+
+pub fn (nn byteptr) str() string {
+	return u64(nn).hex()
+}
+
 // ----- utilities functions -----
 
 pub fn (a []byte) contains(val byte) bool {
@@ -356,6 +364,8 @@ pub fn (a []byte) contains(val byte) bool {
 	return false
 }
 
+
+/*
 pub fn (c rune) str() string {
 	fst_byte := int(c)>>8 * 3 & 0xff
 	len := utf8_char_len(fst_byte)
@@ -369,6 +379,7 @@ pub fn (c rune) str() string {
 	str.str[len] = `\0`
 	return str
 }
+*/
 
 pub fn (c byte) str() string {
 	mut str := string{

@@ -7,10 +7,8 @@ module main
 // / look & feel of the results is easy, since it is done in normal V
 // / code, instead of in embedded C ...
 // /////////////////////////////////////////////////////////////////////
-import (
-	os
-	benchmark
-)
+import os
+import benchmark
 
 const (
 	INNER_INDENT = '     '
@@ -52,7 +50,7 @@ fn (b mut BenchedTests) testing_step_end() {
 	// ////////////////////////////////////////////////////////////////
 	if ok_diff == 0 && fail_diff == 0 {
 		b.bench.neither_fail_nor_ok()
-		println(INNER_INDENT + b.bench.step_message_ok('NO asserts | ') + b.fn_name())
+		println(INNER_INDENT + b.bench.step_message_ok('   NO asserts | ') + b.fn_name())
 		return
 	}
 	// ////////////////////////////////////////////////////////////////

@@ -15,7 +15,7 @@ pub:
 }
 
 /*
-// Private function, used by V (`nums := []int`)
+// Private function, used by V (`nums := []int{}`)
 fn new_array(mylen, cap, elm_size int) array {
 	arr := array {
 		len: mylen
@@ -98,11 +98,17 @@ pub fn (a array) reverse() array {
 	return a
 }
 
+// array.clone_static returns an independent copy of a given array
+// It should be used only in -autofree generated code.
+fn (a array) clone_static() array {
+       return a.clone()
+}
+
 pub fn (a array) clone() array {
 	return a
 }
 
-pub fn (a array) free() {
+pub fn (a &array) free() {
 }
 
 // "[ 'a', 'b', 'c' ]"
@@ -130,6 +136,5 @@ pub fn (arr mut array) push_many(val voidptr, size int) {
 }
 
 pub fn free(voidptr) {
-	
-}
 
+}

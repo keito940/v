@@ -4,6 +4,7 @@
 module ast
 
 import v.table
+import v.token
 
 pub struct Scope {
 mut:
@@ -15,17 +16,17 @@ mut:
 }
 
 pub fn new_scope(parent &Scope, start_pos int) &Scope {
-	return &Scope{
+	return &ast.Scope{
 		parent: parent
 		start_pos: start_pos
 	}
 }
 
-pub fn (s &Scope) find_with_scope(name string) ?(ScopeObject,&Scope) {
+pub fn (s &Scope) find_with_scope(name string) ?(ScopeObject, &Scope) {
 	mut sc := s
-	for {
+	for  {
 		if name in sc.objects {
-			return sc.objects[name],sc
+			return sc.objects[name], sc
 		}
 		if isnil(sc.parent) {
 			break
@@ -51,15 +52,30 @@ pub fn (s &Scope) is_known(name string) bool {
 	if _ := s.find(name) {
 		return true
 	}
+	//
+	else{}
 	return false
 }
 
-
-pub fn (s &Scope) find_var(name string) ?Var {
+pub fn (s &Scope) find_var(name string) ?&Var {
 	if obj := s.find(name) {
-		match obj {
+		v := ScopeObject(obj)
+		match v {
 			Var {
-				return *it
+				return it
+			}
+			else {}
+		}
+	}
+	return none
+}
+
+pub fn (s &Scope) find_const(name string) ?&ConstField {
+	if obj := s.find(name) {
+		cf := ScopeObject(obj)
+		match cf {
+			ConstField {
+				return it
 			}
 			else {}
 		}
@@ -87,7 +103,10 @@ pub fn (s mut Scope) update_var_type(name string, typ table.Type) {
 }
 
 pub fn (s mut Scope) register(name string, obj ScopeObject) {
-	if x := s.find(name) {
+	if name == '_' {
+		return
+	}
+	if name in s.objects {
 		// println('existing obect: $name')
 		return
 	}
@@ -115,11 +134,9 @@ pub fn (s &Scope) innermost(pos int) &Scope {
 			s1 := s.children[middle]
 			if s1.end_pos < pos {
 				first = middle + 1
-			}
-			else if s1.contains(pos) {
+			} else if s1.contains(pos) {
 				return s1.innermost(pos)
-			}
-			else {
+			} else {
 				last = middle - 1
 			}
 			middle = (first + last) / 2
@@ -138,7 +155,7 @@ fn (s &Scope) contains(pos int) bool {
 	return pos >= s.start_pos && pos <= s.end_pos
 }
 
-pub fn (sc &Scope) show(depth int, max_depth int) string {
+pub fn (sc &Scope) show(depth, max_depth int) string {
 	mut out := ''
 	mut indent := ''
 	for _ in 0 .. depth * 4 {
@@ -156,7 +173,7 @@ pub fn (sc &Scope) show(depth int, max_depth int) string {
 			else {}
 		}
 	}
-	if max_depth == 0 || depth < max_depth-1 {
+	if max_depth == 0 || depth < max_depth - 1 {
 		for i, _ in sc.children {
 			out += sc.children[i].show(depth + 1, max_depth)
 		}

@@ -1,6 +1,5 @@
 // Build and run files in ./prod/ folder, comparing their output to *.expected.txt files.
 // (Similar to REPL tests, but in -prod mode.)
-// import os
 import v.tests.repl.runner
 import benchmark
 

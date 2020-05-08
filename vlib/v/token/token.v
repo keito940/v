@@ -10,6 +10,7 @@ pub:
 	line_nr int // the line number in the source where the token occured
 	// name_idx int // name table index for O(1) lookup
 	pos     int // the position of the token in scanner text
+	len     int // length of the literal
 }
 
 pub enum Kind {
@@ -43,6 +44,7 @@ pub enum Kind {
 	str_dollar
 	left_shift
 	right_shift
+	not_in // !in
 	// at // @
 	assign // =
 	decl_assign // :=
@@ -96,9 +98,9 @@ pub enum Kind {
 	key_goto
 	key_if
 	key_import
-	key_import_const
 	key_in
 	key_interface
+	key_is
 	// key_it
 	key_match
 	key_module
@@ -145,7 +147,7 @@ fn build_token_str() []string {
 	s[Kind.eof] = 'eof'
 	s[Kind.name] = 'name'
 	s[Kind.number] = 'number'
-	s[Kind.string] = 'STR'
+	s[Kind.string] = 'string'
 	s[Kind.chartoken] = 'char'
 	s[Kind.plus] = '+'
 	s[Kind.minus] = '-'
@@ -166,6 +168,7 @@ fn build_token_str() []string {
 	s[Kind.dotdot] = '..'
 	s[Kind.ellipsis] = '...'
 	s[Kind.comma] = ','
+	s[Kind.not_in] = '!in'
 	// s[Kind.at] = '@'
 	s[Kind.semicolon] = ';'
 	s[Kind.colon] = ':'
@@ -229,7 +232,6 @@ fn build_token_str() []string {
 	s[Kind.key_enum] = 'enum'
 	s[Kind.key_interface] = 'interface'
 	s[Kind.key_pub] = 'pub'
-	s[Kind.key_import_const] = 'import_const'
 	s[Kind.key_in] = 'in'
 	s[Kind.key_atomic] = 'atomic'
 	s[Kind.key_orelse] = 'or'
@@ -242,6 +244,7 @@ fn build_token_str() []string {
 	s[Kind.key_select] = 'select'
 	s[Kind.key_none] = 'none'
 	s[Kind.key_offsetof] = '__offsetof'
+	s[Kind.key_is] = 'is'
 	return s
 }
 
@@ -260,7 +263,7 @@ pub fn is_key(key string) bool {
 }
 
 pub fn is_decl(t Kind) bool {
-	return t in [.key_enum, .key_interface, .key_fn, .key_struct, .key_type, .key_const, .key_import_const, .key_pub, .eof]
+	return t in [.key_enum, .key_interface, .key_fn, .key_struct, .key_type, .key_const, .key_pub, .eof]
 }
 
 pub fn (t Kind) is_assign() bool {
@@ -299,18 +302,17 @@ pub enum Precedence {
 	assign // =
 	eq // == or !=
 	// less_greater // > or <
-	sum // + or -
-	product // * or /
+	sum // + - | ^
+	product // * / << >> &
 	// mod // %
 	prefix // -X or !X
-	postfix
+	postfix // ++ or --
 	call // func(X) or foo.method(X)
 	index // array[index], map[key]
 }
 
 pub fn build_precedences() []Precedence {
-	mut p := []Precedence
-	p = make(100, 100, sizeof(Precedence))
+	mut p := []Precedence{len:100, cap:100}
 	p[Kind.assign] = .assign
 	p[Kind.eq] = .eq
 	p[Kind.ne] = .eq
@@ -380,7 +382,7 @@ pub fn (tok Token) precedence() int {
 		.left_shift_assign, .right_shift_assign, .mult_assign, .xor_assign {
 			return int(Precedence.assign)
 		}
-		.key_in, .key_as {
+		.key_in, .not_in, .key_as, .key_is {
 			return int(Precedence.in_as)
 		}
 		.logical_or, .and {
@@ -420,7 +422,7 @@ pub fn (k Kind) is_start_of_type() bool {
 pub fn (kind Kind) is_infix() bool {
 	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in,
 	//
-	.key_as, .ge, .le, .logical_or, .xor,
+	.key_as, .ge, .le, .logical_or, .xor, .not_in, .key_is,
 	//
 	.and, .dot, .pipe, .amp, .left_shift, .right_shift]
 }

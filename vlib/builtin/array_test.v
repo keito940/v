@@ -4,7 +4,7 @@ const (
 )
 
 fn test_pointer() {
-	mut arr := []&int
+	mut arr := []&int{}
 	a := 1
 	b := 2
 	c := 3
@@ -19,6 +19,26 @@ fn test_pointer() {
 	assert *d_arr[0][1] == 3
 	println(*d_arr[0][1])
 	assert *d_arr[1][0] == 1
+}
+
+fn test_assign() {
+	mut arr := [2, 4, 8, 16, 32, 64, 128]
+
+	arr[0] = 2
+	arr[1] &= 255
+	arr[2] |= 255
+	arr[3] <<= 4
+	arr[4] >>= 4
+	arr[5] %= 5
+	arr[6] ^= 3
+
+	assert arr[0] == 2
+	assert arr[1] == 4 & 255
+	assert arr[2] == 8 | 255
+	assert arr[3] == 16 << 4
+	assert arr[4] == 32 >> 4
+	assert arr[5] == 64 % 5
+	assert arr[6] == 128 ^ 3
 }
 
 fn test_ints() {
@@ -79,7 +99,7 @@ struct K {
 }
 
 fn test_empty() {
-	mut chunks := []Chunk
+	mut chunks := []Chunk{}
 	a := Chunk{}
 	assert chunks.len == 0
 	chunks << a
@@ -91,7 +111,7 @@ fn test_empty() {
 }
 
 fn test_push() {
-	mut a := []int
+	mut a := []int{}
 	a << 1
 	a << 3
 	assert a[1] == 3
@@ -125,7 +145,7 @@ fn test_insert() {
 // assert a[4] == 5
 // assert a[3] == 2
 // assert a.len == 5
-// mut b := []f64
+// mut b := []f64{}
 // assert b.len == 0
 // b.insert(0, f64(1.1))
 // assert b.len == 1
@@ -135,12 +155,12 @@ fn test_insert() {
 // It depends on array.insert
 // -----------------------------
 // fn test_prepend() {
-// mut a := []int
+// mut a := []int{}
 // assert a.len == 0
 // a.prepend(1)
 // assert a.len == 1
 // assert a[0] == 1
-// mut b := []f64
+// mut b := []f64{}
 // assert b.len == 0
 // b.prepend(f64(1.1))
 // assert b.len == 1
@@ -148,7 +168,7 @@ fn test_insert() {
 // }
 fn test_strings() {
 	a := ['a', 'b', 'c']
-	assert a.str() == '["a", "b", "c"]'
+	assert a.str() == "['a', 'b', 'c']"
 }
 
 /*
@@ -269,7 +289,7 @@ fn test_reverse() {
 	for i, _ in d {
 		assert d[i] == b[b.len - i - 1]
 	}
-	e := []int
+	e := []int{}
 	f := e.reverse()
 	assert f.len == 0
 }
@@ -320,7 +340,7 @@ fn double_up(a mut []int) {
 }
 
 fn double_up_v2(a mut []int) {
-	for i, val in a {
+	for i, _ in a {
 		a[i] = a[i]*2 // or val*2, doesn't matter
 	}
 }
@@ -364,7 +384,7 @@ mut:
 }
 
 // TODO: default array/struct str methods
-pub fn (ta []Test2) str() string {
+fn (ta []Test2) str() string {
 	mut s := '['
 	for i, t in ta {
 		s += t.str()
@@ -376,11 +396,11 @@ pub fn (ta []Test2) str() string {
 	return s
 }
 
-pub fn (t Test2) str() string {
+fn (t Test2) str() string {
 	return '{$t.one $t.two}'
 }
 
-pub fn (t Test) str() string {
+fn (t Test) str() string {
 	return '{$t.a $t.b}'
 }
 
@@ -395,9 +415,8 @@ fn test_struct_print() {
 	}
 	a.b << b
 	a.b << b
-	println('QTODO: v2 struct .str() methods')
-	//assert a.str() == '{Test [{1 2}, {1 2}] }'
-	// assert b.str() == '{1 2}'
+	assert a.str() == '{Test [{1 2}, {1 2}]}'
+	assert b.str() == '{1 2}'
 	assert a.b.str() == '[{1 2}, {1 2}]'
 }
 
@@ -452,6 +471,8 @@ fn test_in() {
 	assert 3 in a
 	assert !(4 in a)
 	assert !(0 in a)
+	assert 0 !in a
+	assert 4 !in a
 }
 
 fn sum(prev int, curr int) int {
@@ -490,41 +511,86 @@ fn test_filter() {
 	d := c.filter(it.len > 1)
 	assert d[0] == 'is'
 	assert d[1] == 'awesome'
+	////////
+	arr :=[1,2,3,4,5,6,7,8,9,10]
+	println(arr.filter(it % 2 == 0 || it % 3 == 0))
+	assert true
+	assert [1,2,3].len == 3
+	mut mut_arr := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+	mut_arr = mut_arr.filter(it < 4)
+	assert mut_arr.len == 3
+
+	// TODO
+	//assert arr.filter(arr % 2).len == 5
+}
+
+fn map_test_helper_1(i int) int {
+	return i * i
+}
+fn map_test_helper_2(i int, b string) int {
+	return i + b.len
+}
+fn map_test_helper_3(i int, b []string) int {
+	return i + b.map(it.len)[i % b.len]
 }
 
 fn test_map() {
-	// QTODO
-	println(1)
-	/*
-	a := [1, 2, 3, 4, 5, 6]
-	b := a.map(it * 10)
-	assert b.len == 6
-	assert b[0] == 10
-	assert b[1] == 20
-	assert b[2] == 30
-	c := ['v', 'is', 'awesome']
-	d := c.map(it.to_upper())
-	assert d[0] == 'V'
-	assert d[1] == 'IS'
-	assert d[2] == 'AWESOME'
-	bools := c.map(it == 'v')
-	assert bools.len == 3
-	assert bools[0] == true
-	assert bools[1] == false
-	assert bools[2] == false
-	*/
+	nums := [1, 2, 3, 4, 5, 6]
+	strs := ['v', 'is', 'awesome']
+
+	//assert nums.map() == <error>
+	//assert nums.map(it, 'excessive') == <error>
+
+	// identity
+	assert nums.map(it) == [1, 2, 3, 4, 5, 6]
+	assert strs.map(it) == ['v', 'is', 'awesome']
+	assert nums.map(it - it) == [0,0,0,0,0,0]
+	assert nums.map(it - it)[0] == 0
+
+	// type switch
+	assert nums.map(it * 10) == [10, 20, 30, 40, 50, 60]
+	assert nums.map(it * it) == [1, 4, 9, 16, 25, 36]
+	assert nums.map('$it') == ['1', '2', '3', '4', '5', '6']
+	assert nums.map(it % 2 == 0) == [false, true, false, true, false, true]
+
+	assert strs.map(it.to_upper()) == ['V', 'IS', 'AWESOME']
+	assert strs.map(it == 'awesome') == [false, false, true]
+	assert strs.map(it.len in nums) == [true, true, false]
+	assert strs.map(7) == [7, 7, 7]
+
+	// external func
+	assert nums.map(map_test_helper_1(it)) == [1, 4, 9, 16, 25, 36]
+	assert nums.map(map_test_helper_2(it, 'bb')) == [3, 4, 5, 6, 7, 8]
+	assert nums.map(map_test_helper_3(it, strs)) == [3, 9, 4, 6, 12, 7]
+
+	// empty array as input
+	assert []int{len:0}.map(it * 2) == []
+
+	// nested maps (where it is of same type)
+	assert nums.map( strs.map(7) == [7, 7, 7] ) == [true, true, true, true, true, true]
+	assert nums.map( '$it' + strs.map('a')[0] ) == ['1a', '2a', '3a', '4a', '5a', '6a']
+	assert nums.map( it + strs.map(7)[0] ) == [8, 9, 10, 11, 12, 13]
+	assert nums.map( it + strs.map(it.len)[0] ) == [2, 3, 4, 5, 6, 7]
+	assert strs.map( it.len + strs.map(it.len)[0] ) == [2, 3, 8]
+
+	// nested (different it types)
+	assert strs.map( it[ nums.map(it - it)[0] ] ) == [`v`, `i`, `a`]
+	assert nums[0..3].map('$it' + strs.map(it)[it-1]) == ['1v','2is','3awesome']
+
+	assert nums == [1, 2, 3, 4, 5, 6]
+	assert strs == ['v', 'is', 'awesome']
 }
 
 fn test_array_str() {
 	numbers := [1, 2, 3]
-	// assert numbers == [1,2,3]
+	assert numbers == [1,2,3]
 	numbers2 := [numbers, [4, 5, 6]] // dup str() bug
+	_=numbers2
 	assert true
-	/*
-	QTODO
 	assert numbers.str() == '[1, 2, 3]'
-	assert numbers2.str() == '[[1, 2, 3], [4, 5, 6]]'
-	*/
+	// QTODO
+	//assert numbers2.str() == '[[1, 2, 3], [4, 5, 6]]'
+
 }
 
 fn test_eq() {
@@ -677,4 +743,26 @@ fn test_hex(){
 
 	st1 := [byte(0x41)].repeat(100)
 	assert st1.hex() == "41".repeat(100)
+}
+
+fn test_left_shift_precendence() {
+	mut arr := []int{}
+	arr << 1 + 1
+	arr << 1 - 1
+	arr << 2 / 1
+	arr << 2 * 1
+
+	assert arr[0] == 2
+	assert arr[1] == 0
+	assert arr[2] == 2
+	assert arr[3] == 2
+}
+
+fn test_array_with_cap() {
+	a4 := []int{cap:10, len:1 }
+	assert a4.len == 1
+	assert a4.cap == 10
+	a5 := []int{len:1, cap:10}
+	assert a5.len == 1
+	assert a5.cap == 10
 }
