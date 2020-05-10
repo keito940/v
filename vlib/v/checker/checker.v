@@ -18,7 +18,7 @@ const (
 
 pub struct Checker {
 	table          &table.Table
-mut:
+pub mut:
 	file           ast.File
 	nr_errors      int
 	nr_warnings    int
@@ -231,6 +231,12 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		sym := c.table.get_type_symbol(field.typ)
 		if sym.kind == .placeholder && !decl.is_c && !sym.name.starts_with('C.') {
 			c.error('unknown type `$sym.name`', field.pos)
+		}
+		if sym.kind == .struct_ {
+			info:=sym.info as table.Struct
+			if info.is_ref_only && !field.typ.is_ptr() {
+				c.error('`$sym.name` type can only be used as a reference: `&$sym.name`', field.pos)
+			}
 		}
 		if field.has_default_expr {
 			c.expected_type = field.typ
@@ -517,10 +523,14 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 			match typ_sym.kind {
 				.struct_ {
 					struct_info := typ_sym.info as table.Struct
-					field_info := struct_info.get_field(it.field)
+					field_info := struct_info.find_field(it.field_name) or {
+						type_str := c.table.type_to_str(it.expr_type)
+						c.error('unknown field `${type_str}.$it.field_name`', it.pos)
+						return
+					}
 					if !field_info.is_mut {
 						type_str := c.table.type_to_str(it.expr_type)
-						c.error('field `$it.field` of struct `${type_str}` is immutable', it.pos)
+						c.error('field `$it.field_name` of struct `${type_str}` is immutable', it.pos)
 					}
 					c.fail_if_immutable(it.expr)
 				}
@@ -833,6 +843,19 @@ pub fn (mut c Checker) call_fn(call_expr mut ast.CallExpr) table.Type {
 	if fn_name == 'println' || fn_name == 'print' {
 		c.expected_type = table.string_type
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
+		/*
+		// TODO: optimize `struct T{} fn (t &T) str() string {return 'abc'} mut a := []&T{} a << &T{} println(a[0])`
+		// It currently generates:
+		// `println(T_str_no_ptr(*(*(T**)array_get(a, 0))));`
+		// ... which works, but could be just:
+		// `println(T_str(*(T**)array_get(a, 0)));`
+		prexpr := call_expr.args[0].expr
+		prtyp := call_expr.args[0].typ
+		prtyp_sym := c.table.get_type_symbol(prtyp)
+		prtyp_is_ptr := prtyp.is_ptr()
+		prhas_str, prexpects_ptr, prnr_args := prtyp_sym.str_method_info()
+		eprintln('>>> println hack typ: ${prtyp} | sym.name: ${prtyp_sym.name} | is_ptr: $prtyp_is_ptr | has_str: $prhas_str | expects_ptr: $prexpects_ptr | nr_args: $prnr_args | expr: ${prexpr.str()} ')
+		*/
 		return f.return_type
 	}
 	// TODO: typ optimize.. this node can get processed more than once
@@ -989,7 +1012,7 @@ pub fn (mut c Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 	selector_expr.expr_type = typ
 	// println('sel expr line_nr=$selector_expr.pos.line_nr typ=$selector_expr.expr_type')
 	typ_sym := c.table.get_type_symbol(typ)
-	field_name := selector_expr.field
+	field_name := selector_expr.field_name
 	// variadic
 	if typ.flag_is(.variadic) {
 		if field_name == 'len' {
@@ -997,6 +1020,9 @@ pub fn (mut c Checker) selector_expr(selector_expr mut ast.SelectorExpr) table.T
 		}
 	}
 	if field := c.table.struct_find_field(typ_sym, field_name) {
+	if typ_sym.mod != c.mod && !field.is_pub{
+		c.error('field `${typ_sym.name}.$field_name` is not public', selector_expr.pos)
+	}
 		return field.typ
 	}
 	if typ_sym.kind != .struct_ {
@@ -1086,32 +1112,38 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 
 pub fn (mut c Checker) assign_stmt(assign_stmt mut ast.AssignStmt) {
 	c.expected_type = table.none_type // TODO a hack to make `x := if ... work`
-	if assign_stmt.right[0] is ast.CallExpr {
-		call_expr := assign_stmt.right[0] as ast.CallExpr
+	right_first := assign_stmt.right[0]
+	mut right_len := assign_stmt.right.len
+	if right_first is ast.CallExpr || right_first is ast.IfExpr || right_first is ast.MatchExpr {
 		right_type0 := c.expr(assign_stmt.right[0])
 		assign_stmt.right_types = [right_type0]
 		right_type_sym0 := c.table.get_type_symbol(right_type0)
-		mut right_len := if right_type0 == table.void_type { 0 } else { assign_stmt.right.len }
+		right_len = if right_type0 == table.void_type { 0 } else { right_len }
 		if right_type_sym0.kind == .multi_return {
 			assign_stmt.right_types = right_type_sym0.mr_info().types
 			right_len = assign_stmt.right_types.len
 		}
 		if assign_stmt.left.len != right_len {
-			c.error('assignment mismatch: $assign_stmt.left.len variable(s) but `${call_expr.name}()` returns $right_len value(s)',
-				assign_stmt.pos)
-			return
+			if right_first is ast.CallExpr {
+				call_expr := assign_stmt.right[0] as ast.CallExpr
+				c.error('assignment mismatch: $assign_stmt.left.len variable(s) but `${call_expr.name}()` returns $right_len value(s)',
+					assign_stmt.pos)
+				return
+			} else {
+				c.error('assignment mismatch: $assign_stmt.left.len variable(s) $right_len value(s)',
+					assign_stmt.pos)
+				return
+			}
 		}
-	} else {
-		if assign_stmt.left.len != assign_stmt.right.len {
-			c.error('assignment mismatch: $assign_stmt.left.len variable(s) $assign_stmt.right.len value(s)',
-				assign_stmt.pos)
-			return
-		}
+	} else if assign_stmt.left.len != right_len {
+		c.error('assignment mismatch: $assign_stmt.left.len variable(s) $assign_stmt.right.len value(s)',
+			assign_stmt.pos)
+		return
 	}
 	mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 	for i, _ in assign_stmt.left {
 		mut ident := assign_stmt.left[i]
-		if assign_stmt.right_types.len < assign_stmt.right.len {
+		if assign_stmt.right_types.len < right_len {
 			assign_stmt.right_types << c.expr(assign_stmt.right[i])
 		}
 		val_type := assign_stmt.right_types[i]
@@ -1388,7 +1420,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			if it.is_method {
 				sym := c.table.get_type_symbol(it.receiver.typ)
 				if sym.kind == .interface_ {
-					c.error('interaces cannot be used as method receiver', it.receiver_pos)
+					c.error('interfaces cannot be used as method receiver', it.receiver_pos)
 				}
 				// if sym.has_method(it.name) {
 				// c.warn('duplicate method `$it.name`', it.pos)
@@ -1440,6 +1472,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			} else {
 				mut scope := c.file.scope.innermost(it.pos.pos)
 				sym := c.table.get_type_symbol(typ)
+				if sym.kind == .map && !(it.key_var.len > 0 && it.val_var.len > 0) {
+					c.error('for in: cannot use one variable in map', it.pos)
+				}
 				if it.key_var.len > 0 {
 					key_type := match sym.kind {
 						.map { sym.map_info().key_type }
@@ -1980,7 +2015,7 @@ pub fn (mut c Checker) if_expr(node mut ast.IfExpr) table.Type {
 	}
 	if node.has_else && node.is_expr {
 		last_branch := node.branches[node.branches.len - 1]
-		if last_branch.stmts.len > 0 {
+		if last_branch.stmts.len > 0 && node.branches[0].stmts.len > 0 {
 			match last_branch.stmts[last_branch.stmts.len - 1] {
 				ast.ExprStmt {
 					// type_sym := p.table.get_type_symbol(it.typ)
@@ -1995,8 +2030,14 @@ pub fn (mut c Checker) if_expr(node mut ast.IfExpr) table.Type {
 				}
 				else {}
 			}
+		} else {
+			c.error('`if` expression needs returns in both branches', node.pos)
 		}
 	}
+	// won't yet work due to eg: if true { println('foo') }
+	/*if node.is_expr && !node.has_else {
+		c.error('`if` expression needs `else` clause. remove return values or add `else`', node.pos)
+	}*/
 	return table.bool_type
 }
 
@@ -2071,15 +2112,22 @@ pub fn (mut c Checker) enum_val(node mut ast.EnumVal) table.Type {
 	// println('checker: enum_val: $node.enum_name typeidx=$typ_idx')
 	if typ_idx == 0 {
 		c.error('not an enum (name=$node.enum_name) (type_idx=0)', node.pos)
+		return table.void_type
 	}
 	typ := table.new_type(typ_idx)
 	if typ == table.void_type {
 		c.error('not an enum', node.pos)
+		return table.void_type
 	}
 	typ_sym := c.table.get_type_symbol(typ)
 	// println('tname=$typ_sym.name $node.pos.line_nr $c.file.path')
 	if typ_sym.kind != .enum_ {
 		c.error('not an enum', node.pos)
+		return table.void_type
+	}
+	if !(typ_sym.info is table.Enum) {
+		c.error('not an enum', node.pos)
+		return table.void_type
 	}
 	// info := typ_sym.info as table.Enum
 	info := typ_sym.enum_info()
@@ -2104,6 +2152,13 @@ pub fn (mut c Checker) map_init(node mut ast.MapInit) table.Type {
 	key0_type := c.expr(node.keys[0])
 	val0_type := c.expr(node.vals[0])
 	for i, key in node.keys {
+		key_i := key as ast.StringLiteral
+		for j in 0..i {
+			key_j := node.keys[j] as ast.StringLiteral
+			if key_i.val == key_j.val {
+				c.error('duplicate key "$key_i.val" in map literal', key.position())
+			}
+		}
 		if i == 0 {
 			continue
 		}
