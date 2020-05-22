@@ -31,13 +31,17 @@ pub fn (node &FnDecl) str(t &table.Table) string {
 		*/
 	}
 	mut name := if node.is_anon { '' } else { node.name.after('.') }
-	if node.is_c {
+	if node.language == .c {
 		name = 'C.$name'
 	}
-	if node.is_js {
+	else if node.language == .js {
 		name = 'JS.$name'
 	}
-	f.write('fn ${receiver}${name}(')
+	f.write('fn ${receiver}${name}')
+	if node.is_generic {
+		f.write('<T>')
+	}
+	f.write('(')
 	for i, arg in node.args {
 		// skip receiver
 		// if (node.is_method || node.is_interface) && i == 0 {
@@ -125,7 +129,7 @@ pub fn (x Expr) str() string {
 			return it.op.str() + it.right.str()
 		}
 		SelectorExpr {
-			return '${it.expr.str()}.${it.field}'
+			return '${it.expr.str()}.${it.field_name}'
 		}
 		StringInterLiteral {
 			mut res := []string{}

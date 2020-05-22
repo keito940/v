@@ -15,12 +15,19 @@ import strings
 
 pub type Type int
 
-pub type TypeInfo = Alias | Array | ArrayFixed | Enum | FnType | Interface | Map | MultiReturn | Struct | SumType
+pub type TypeInfo = Alias | Array | ArrayFixed | Enum | FnType | Interface | Map | MultiReturn |
+	Struct | SumType
+
+pub enum Language {
+	v
+	c
+	js
+}
 
 pub struct TypeSymbol {
 pub:
 	parent_idx int
-mut:
+pub mut:
 	info       TypeInfo
 	kind       Kind
 	name       string
@@ -184,6 +191,7 @@ pub const (
 	array_type_idx   = 20
 	map_type_idx     = 21
 	any_type_idx     = 22
+	t_type_idx       = 23
 )
 
 pub const (
@@ -230,6 +238,7 @@ pub const (
 	array_type   = new_type(array_type_idx)
 	map_type     = new_type(map_type_idx)
 	any_type     = new_type(any_type_idx)
+	t_type       = new_type(t_type_idx)
 )
 
 pub const (
@@ -244,7 +253,7 @@ pub const (
 pub struct MultiReturn {
 pub:
 	name  string
-mut:
+pub mut:
 	types []Type
 }
 
@@ -357,94 +366,122 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_type_symbol(TypeSymbol{
 		kind: .void
 		name: 'void'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .voidptr
 		name: 'voidptr'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .byteptr
 		name: 'byteptr'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .charptr
 		name: 'charptr'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .i8
 		name: 'i8'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .i16
 		name: 'i16'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .int
 		name: 'int'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .i64
 		name: 'i64'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .byte
 		name: 'byte'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .u16
 		name: 'u16'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .u32
 		name: 'u32'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .u64
 		name: 'u64'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .f32
 		name: 'f32'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .f64
 		name: 'f64'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .char
 		name: 'char'
+		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .bool
 		name: 'bool'
+		mod: 'builtin'
 	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol({
 		kind: .none_
 		name: 'none'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .string
 		name: 'string'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .ustring
 		name: 'ustring'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .array
 		name: 'array'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .map
 		name: 'map'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .any
 		name: 'any'
+		mod: 'builtin'
+	})
+	t.register_type_symbol(TypeSymbol{
+		kind: .any
+		name: 'T'
+		mod: 'builtin'
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .size_t
 		name: 'size_t'
+		mod: 'builtin'
 	})
 	// TODO: remove. for v1 map compatibility
 	map_string_string_idx := t.find_or_register_map(string_type, string_type)
@@ -452,11 +489,13 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_type_symbol(TypeSymbol{
 		kind: .alias
 		name: 'map_string'
+		mod: 'builtin'
 		parent_idx: map_string_string_idx
 	})
 	t.register_type_symbol(TypeSymbol{
 		kind: .alias
 		name: 'map_int'
+		mod: 'builtin'
 		parent_idx: map_string_int_idx
 	})
 }
@@ -531,13 +570,14 @@ pub fn (kinds []Kind) str() string {
 
 pub struct Struct {
 pub mut:
-	fields     []Field
-	is_typedef bool // C. [typedef]
-	is_union   bool
+	fields      []Field
+	is_typedef  bool // C. [typedef]
+	is_union    bool
+	is_ref_only bool
 }
 
 pub struct Interface {
-mut:
+pub mut:
 	types []Type
 }
 
@@ -548,7 +588,8 @@ pub:
 
 pub struct Alias {
 pub:
-	foo string
+	parent_typ Type
+	language   Language
 }
 
 // NB: FExpr here is a actually an ast.Expr .
@@ -559,12 +600,12 @@ pub type FExpr = byteptr | voidptr
 pub struct Field {
 pub:
 	name             string
-mut:
+pub mut:
 	typ              Type
 	default_expr     FExpr
 	has_default_expr bool
 	default_val      string
-	attr             string
+	attrs            []string
 	is_pub           bool
 	is_mut           bool
 	is_global        bool
@@ -573,7 +614,7 @@ mut:
 pub struct Array {
 pub:
 	nr_dims   int
-mut:
+pub mut:
 	elem_type Type
 }
 
@@ -581,7 +622,7 @@ pub struct ArrayFixed {
 pub:
 	nr_dims   int
 	size      int
-mut:
+pub mut:
 	elem_type Type
 }
 
@@ -596,10 +637,15 @@ pub:
 	variants []Type
 }
 
+// TODO simplify this method
 pub fn (table &Table) type_to_str(t Type) string {
 	sym := table.get_type_symbol(t)
+	mut res := sym.name
 	if sym.kind == .multi_return {
-		mut res := '('
+		res = '('
+		if t.flag_is(.optional) {
+			res = '?' + res
+		}
 		mr_info := sym.info as MultiReturn
 		for i, typ in mr_info.types {
 			res += table.type_to_str(typ)
@@ -610,10 +656,10 @@ pub fn (table &Table) type_to_str(t Type) string {
 		res += ')'
 		return res
 	}
-	mut res := sym.name
-	if sym.kind == .array {
+	if sym.kind == .array || 'array_' in res {
 		res = res.replace('array_', '[]')
-	} else if sym.kind == .map {
+	}
+	if sym.kind == .map || 'map_string_' in res {
 		res = res.replace('map_string_', 'map[string]')
 	}
 	// mod.submod.submod2.Type => submod2.Type
@@ -641,7 +687,7 @@ pub fn (table &Table) type_to_str(t Type) string {
 	return res
 }
 
-pub fn(t &Table) fn_to_str(func &Fn) string {
+pub fn (t &Table) fn_to_str(func &Fn) string {
 	mut sb := strings.new_builder(20)
 	sb.write('${func.name}(')
 	for i in 1 .. func.args.len {
@@ -655,7 +701,7 @@ pub fn(t &Table) fn_to_str(func &Fn) string {
 		}
 	}
 	sb.write(')')
-	if func.return_type != table.void_type {
+	if func.return_type != void_type {
 		sb.write(' ${t.type_to_str(func.return_type)}')
 	}
 	return sb.str()
@@ -675,6 +721,20 @@ pub fn (t &TypeSymbol) find_method(name string) ?Fn {
 		}
 	}
 	return none
+}
+
+pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
+	mut has_str_method := false
+	mut expects_ptr := false
+	mut nr_args := 0
+	if sym_str_method := t.find_method('str') {
+		has_str_method = true
+		nr_args = sym_str_method.args.len
+		if nr_args > 0 {
+			expects_ptr = sym_str_method.args[0].typ.is_ptr()
+		}
+	}
+	return has_str_method, expects_ptr, nr_args
 }
 
 pub fn (s Struct) find_field(name string) ?Field {

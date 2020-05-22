@@ -8,12 +8,14 @@ import v.cflag
 
 pub struct Table {
 pub mut:
-	types     []TypeSymbol
-	type_idxs map[string]int
-	fns       map[string]Fn
-	imports   []string // List of all imports
-	modules   []string // List of all modules registered by the application
-	cflags    []cflag.CFlag
+	types         []TypeSymbol
+	type_idxs     map[string]int
+	fns           map[string]Fn
+	imports       []string // List of all imports
+	modules       []string // List of all modules registered by the application
+	cflags        []cflag.CFlag
+	redefined_fns []string
+	fn_gen_types  map[string][]Type // for generic functions
 }
 
 pub struct Fn {
@@ -21,8 +23,7 @@ pub:
 	args        []Arg
 	return_type Type
 	is_variadic bool
-	is_c        bool
-	is_js       bool
+	language    Language
 	is_generic  bool
 	is_pub      bool
 	mod         string
@@ -374,12 +375,13 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 	return t.register_type_symbol(mr_type)
 }
 
-pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon, has_decl bool) int {
+pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon, has_decl bool) int {
 	name := if f.name.len == 0 { 'anon_fn_$f.signature()' } else { f.name }
 	anon := f.name.len == 0 || is_anon
 	return t.register_type_symbol(TypeSymbol{
 		kind: .function
 		name: name
+		mod: mod
 		info: FnType{
 			is_anon: anon
 			has_decl: has_decl
@@ -461,10 +463,14 @@ pub fn (t &Table) check(got, expected Type) bool {
 	if exp_idx == any_type_idx || got_idx == any_type_idx {
 		return true
 	}
+	// TODO i64 as int etc
 	if (exp_idx in pointer_type_idxs || exp_idx in number_type_idxs) && (got_idx in pointer_type_idxs ||
 		got_idx in number_type_idxs) {
 		return true
 	}
+	// if exp_idx in pointer_type_idxs && got_idx in pointer_type_idxs {
+	// return true
+	// }
 	// see hack in checker IndexExpr line #691
 	if (got_idx == byte_type_idx && exp_idx == byteptr_type_idx) || (exp_idx == byte_type_idx &&
 		got_idx == byteptr_type_idx) {
@@ -516,13 +522,15 @@ pub fn (t &Table) check(got, expected Type) bool {
 	// sum type
 	if got_type_sym.kind == .sum_type {
 		sum_info := got_type_sym.info as SumType
-		if expected in sum_info.variants {
+		// TODO: handle `match SumType { &PtrVariant {} }` currently just checking base
+		if expected.set_nr_muls(0) in sum_info.variants {
 			return true
 		}
 	}
 	if exp_type_sym.kind == .sum_type {
 		sum_info := exp_type_sym.info as SumType
-		if got in sum_info.variants {
+		// TODO: handle `match SumType { &PtrVariant {} }` currently just checking base
+		if got.set_nr_muls(0) in sum_info.variants {
 			return true
 		}
 	}
@@ -530,9 +538,13 @@ pub fn (t &Table) check(got, expected Type) bool {
 	if got_type_sym.kind == .function && exp_type_sym.kind == .function {
 		got_info := got_type_sym.info as FnType
 		exp_info := exp_type_sym.info as FnType
-		if got_info.func.args.len == exp_info.func.args.len {
-			for i, got_arg in got_info.func.args {
-				exp_arg := exp_info.func.args[i]
+		got_fn := got_info.func
+		exp_fn := exp_info.func
+		// we are using check() to compare return type & args as they might include
+		// functions themselves. TODO: optimize, only use check() when needed
+		if got_fn.args.len == exp_fn.args.len && t.check(got_fn.return_type, exp_fn.return_type) {
+			for i, got_arg in got_fn.args {
+				exp_arg := exp_fn.args[i]
 				if !t.check(got_arg.typ, exp_arg.typ) {
 					return false
 				}
@@ -556,4 +568,13 @@ pub fn (table &Table) qualify_module(mod, file_path string) string {
 		}
 	}
 	return mod
+}
+
+pub fn (table &Table) register_fn_gen_type(fn_name string, typ Type) {
+	mut a := table.fn_gen_types[fn_name]
+	if typ in a {
+		return
+	}
+	a << typ
+	table.fn_gen_types[fn_name] = a
 }

@@ -4,7 +4,6 @@
 module pref
 
 import os
-import term
 
 pub const (
 	default_module_path = mpath()
@@ -70,7 +69,6 @@ pub fn (mut p Preferences) fill_with_defaults() {
 			}
 		}
 	}
-	p.enable_globals = true
 }
 
 fn default_c_compiler() string {

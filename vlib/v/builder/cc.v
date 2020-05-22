@@ -7,8 +7,20 @@ import os
 import time
 import v.cflag
 import v.pref
-import v.util
 import term
+
+const (
+c_error_info = '
+==================
+C error. This should never happen.
+
+If you were not working with C interop, please raise an issue on GitHub:
+
+https://github.com/vlang/v/issues/new/choose
+
+You can also use #help on Discord: https://discord.gg/vlang
+')
+
 
 fn todo() {
 }
@@ -40,6 +52,7 @@ fn (mut v Builder) cc() {
 	ends_with_c := v.pref.out_name.ends_with('.c')
 	ends_with_js := v.pref.out_name.ends_with('.js')
 	if ends_with_c || ends_with_js {
+		v.pref.skip_running = true
 		// Translating V code to JS by launching vjs.
 		// Using a separate process for V.js is for performance mostly,
 		// to avoid constant is_js checks.
@@ -69,7 +82,7 @@ fn (mut v Builder) cc() {
 		os.mv_by_cp(v.out_name_c, v.pref.out_name) or {
 			panic(err)
 		}
-		exit(0)
+		return
 	}
 	// Cross compiling for Windows
 	if v.pref.os == .windows {
@@ -247,18 +260,7 @@ fn (mut v Builder) cc() {
 			}
 			else {
 				println('$path not found... building module $imp')
-				if path.ends_with('vlib/ui.o') {
-					println('copying ui...')
-					os.cp('$vdir/thirdparty/ui/ui.o', path)or{
-						panic('error copying ui files')
-					}
-					os.cp('$vdir/thirdparty/ui/ui.vh', pref.default_module_path + '/vlib/ui.vh')or{
-						panic('error copying ui files')
-					}
-				}
-				else {
-					os.system('$vexe build module vlib${os.path_separator}$imp_path')
-				}
+				os.system('$vexe build module vlib${os.path_separator}$imp_path')
 			}
 			if path.ends_with('vlib/ui.o') {
 				a << '-framework Cocoa -framework Carbon'
@@ -269,18 +271,12 @@ fn (mut v Builder) cc() {
 	if v.pref.sanitize {
 		a << '-fsanitize=leak'
 	}
-	// Cross compiling linux TODO
-	/*
-	sysroot := '/tmp/lld/linuxroot/'
-	if v.os == .linux && !linux_host {
-		// Build file.o
-		a << '-c --sysroot=$sysroot -target x86_64-linux-gnu'
-		// Right now `out_name` can be `file`, not `file.o`
-		if !v.out_name.ends_with('.o') {
-			v.out_name = v.out_name + '.o'
+	// Cross compiling linux
+	if v.pref.os == .linux {
+		$if !linux {
+			v.cc_linux_cross()
 		}
 	}
-	*/
 	// Cross compiling windows
 	//
 	// Output executable name
@@ -310,6 +306,11 @@ fn (mut v Builder) cc() {
 	// add all flags (-I -l -L etc) not .o files
 	a << cflags.c_options_without_object_files()
 	a << libs
+	// For C++ we must be very tolerant
+	if guessed_compiler.contains('++') {
+		a << '-fpermissive'
+		a << '-w'
+	}
 	if v.pref.use_cache {
 		//vexe := pref.vexe_path()
 
@@ -348,7 +349,7 @@ fn (mut v Builder) cc() {
 	if !v.pref.is_bare && v.pref.os == .js && os.user_os() == 'linux' {
 		linker_flags << '-lm'
 	}
-	args := a.join(' ') + linker_flags.join(' ')
+	args := a.join(' ') + ' ' + linker_flags.join(' ')
 	start:
 	todo()
 	// TODO remove
@@ -391,18 +392,7 @@ fn (mut v Builder) cc() {
 			eword := 'error:'
 			khighlight := if term.can_show_color_on_stdout() { term.red(eword) } else { eword }
 			println(res.output.replace(eword, khighlight))
-			verror("
-==================
-C error. This should never happen.
-
-V compiler version: ${util.full_v_version()}
-Host OS: ${pref.get_host_os().str()}
-Target OS: $v.pref.os.str()
-
-If you were not working with C interop and are not sure about what's happening,
-please put the whole output in a pastebin and contact us through the following ways with a link to the pastebin:
-- Raise an issue on GitHub: https://github.com/vlang/v/issues/new/choose
-- Ask a question in #help on Discord: https://discord.gg/vlang")
+			verror(c_error_info)
 		} else {
 			if res.output.len < 30 {
 				println(res.output)
@@ -416,14 +406,7 @@ please put the whole output in a pastebin and contact us through the following w
 				println('==================')
 				println('(Use `v -cg` to print the entire error message)\n')
 			}
-			verror("C error.
-
-Please make sure that:
-- You have all V dependencies installed.
-- You did not declare a C function that was not included. (Try commenting your code that involves C interop)
-- You are running the latest version of V. (Try running `v up` and rerunning your command)
-
-If you're confident that all of the above is true, please try running V with the `-cg` option which enables more debugging capabilities.\n")
+			verror(c_error_info)
 		}
 	}
 	diff := time.ticks() - ticks
@@ -488,9 +471,19 @@ If you're confident that all of the above is true, please try running V with the
 	}
 }
 
-fn (mut c Builder) cc_windows_cross() {
+fn (mut c Builder) cc_linux_cross() {
 	/*
-	QTODO
+	sysroot := '/tmp/lld/linuxroot/'
+		// Build file.o
+		a << '-c --sysroot=$sysroot -target x86_64-linux-gnu'
+		// Right now `out_name` can be `file`, not `file.o`
+		if !v.out_name.ends_with('.o') {
+			v.out_name = v.out_name + '.o'
+		}
+		*/
+}
+
+fn (mut c Builder) cc_windows_cross() {
 	println('Cross compiling for Windows...')
 	if !c.pref.out_name.ends_with('.exe') {
 		c.pref.out_name += '.exe'
@@ -499,6 +492,14 @@ fn (mut c Builder) cc_windows_cross() {
 	cflags := c.get_os_cflags()
 	// -I flags
 	args += if c.pref.ccompiler == 'msvc' { cflags.c_options_before_target_msvc() } else { cflags.c_options_before_target() }
+	mut optimization_options := ''
+	mut debug_options := ''
+	if c.pref.is_prod {
+		optimization_options = if c.pref.ccompiler == 'msvc' { '' } else { ' -O3 -fno-strict-aliasing -flto ' }
+	}
+	if c.pref.is_debug {
+		debug_options =  if c.pref.ccompiler == 'msvc' { '' } else { ' -g3 -no-pie ' }
+	}
 	mut libs := ''
 	if false && c.pref.build_mode == .default_mode {
 		libs = '"${pref.default_module_path}/vlib/builtin.o"'
@@ -529,22 +530,24 @@ fn (mut c Builder) cc_windows_cross() {
 	obj_name = obj_name.replace('.o.o', '.o')
 	include := '-I $winroot/include '
 	*/
-	mut cmd := ''
-	cmd = ''
-	$if macos {
-		cmd = 'x86_64-w64-mingw32-gcc -std=gnu11 $args -municode'
-	}
-	$else {
+	if os.user_os() !in ['mac', 'darwin','linux'] {
+		println(os.user_os())
 		panic('your platform is not supported yet')
 	}
-
-	println(cmd)
+	mut cmd := 'x86_64-w64-mingw32-gcc'
+	cmd += ' $optimization_options $debug_options -std=gnu11 $args -municode'
 	//cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 ${pref.default_module_path}/$c.out_name_c'
-	if c.pref.verbosity.is_higher_or_equal(.level_one) {
+	if c.pref.is_verbose || c.pref.show_cc {
 		println(cmd)
 	}
 	if os.system(cmd) != 0 {
-		println('Cross compilation for Windows failed. Make sure you have clang installed.')
+		println('Cross compilation for Windows failed. Make sure you have mingw-w64 installed.')
+		$if macos {
+			println('brew install mingw-w64')
+		}
+		$if linux {
+			println('sudo apt install -y mingw-w64')
+		}
 		exit(1)
 	}
 	/*
@@ -560,8 +563,7 @@ fn (mut c Builder) cc_windows_cross() {
 		// os.rm(obj_name)
 	}
 	*/
-	println('Done!')
-	*/
+	println(c.pref.out_name + ' has been successfully compiled')
 }
 
 fn (c &Builder) build_thirdparty_obj_files() {

@@ -1,5 +1,5 @@
 # ignore all build binaries
-* 
+*
 !*/
 !*.*
 *.exe
@@ -15,13 +15,16 @@
 *.lib
 *.bak
 a.out
+.noprefix.vrepl_temp
 
 # ignore v build files
+/vc
 /v.c
 /v.*.c
 /v.c.out
 .vrepl_temp.v
 fns.txt
+.noprefix.vrepl_temp.v
 
 # ignore temp directories
 /temp
@@ -48,6 +51,7 @@ fns.txt
 .settings/
 *.sublime-workspace
 .vscode/
+*.code-workspace
 *~
 *.swp
 *.swo

@@ -15,8 +15,7 @@ import vhelp
 
 struct FormatOptions {
 	is_l       bool
-	is_c       bool
-	is_js      bool
+	is_c       bool  // NB: This refers to the '-c' fmt flag, NOT the C backend
 	is_w       bool
 	is_diff    bool
 	is_verbose bool
@@ -44,7 +43,6 @@ fn main() {
 	args := util.join_env_vflags_and_os_args()
 	foptions := FormatOptions{
 		is_c: '-c' in args
-		is_js: '-js' in args
 		is_l: '-l' in args
 		is_w: '-w' in args
 		is_diff: '-diff' in args
@@ -100,7 +98,7 @@ fn main() {
 	for file in files {
 		fpath := os.real_path(file)
 		mut worker_command_array := cli_args_no_files.clone()
-		worker_command_array << ['-worker', fpath]
+		worker_command_array << ['-worker', util.quote_path_with_spaces(fpath)]
 		worker_cmd := worker_command_array.join(' ')
 		if foptions.is_verbose {
 			eprintln('vfmt worker_cmd: $worker_cmd')
@@ -197,7 +195,7 @@ fn (foptions &FormatOptions) post_process_file(file, formatted_file_path string)
 		return
 	}
 	is_formatted_different := fc != formatted_fc
-	if foptions.is_c || foptions.is_js {
+	if foptions.is_c {
 		if is_formatted_different {
 			eprintln('File is not formatted: $file')
 			exit(2)

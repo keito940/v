@@ -6,8 +6,6 @@ module builder
 import time
 import os
 import v.pref
-import v.util
-import strings
 
 fn get_vtmp_folder() string {
 	vtmp := os.join_path(os.temp_dir(), 'v')
@@ -40,10 +38,11 @@ pub fn compile(command string, pref &pref.Preferences) {
 	if pref.is_stats {
 		println('compilation took: ${sw.elapsed().milliseconds()} ms')
 	}
+	// running does not require the parsers anymore
+	b.myfree()
 	if pref.is_test || pref.is_run {
 		b.run_compiled_executable_and_exit()
 	}
-	b.myfree()
 }
 
 // Temporary, will be done by -autofree
@@ -54,10 +53,18 @@ fn (mut b Builder) myfree() {
 }
 
 fn (mut b Builder) run_compiled_executable_and_exit() {
+	if b.pref.skip_running {
+		return
+	}
 	if b.pref.is_verbose {
 		println('============ running $b.pref.out_name ============')
 	}
+	
 	mut cmd := '"${b.pref.out_name}"'
+	
+	if b.pref.backend == .js {
+		cmd = 'node "${b.pref.out_name}.js"'
+	}
 	for arg in b.pref.run_args {
 		// Determine if there are spaces in the parameters
 		if arg.index_byte(` `) > 0 {
@@ -137,7 +144,7 @@ pub fn (v Builder) get_builtin_files() []string {
 		if v.pref.is_bare {
 			return v.v_files_from_dir(os.join_path(location, 'builtin', 'bare'))
 		}
-		$if js {
+		if v.pref.backend == .js {
 			return v.v_files_from_dir(os.join_path(location, 'builtin', 'js'))
 		}
 		return v.v_files_from_dir(os.join_path(location, 'builtin'))

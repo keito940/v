@@ -33,8 +33,12 @@ pub fn full_hash() string {
 }
 
 // full_v_version() returns the full version of the V compiler
-pub fn full_v_version() string {
-	return 'V ${v_version} ${full_hash()}'
+pub fn full_v_version(is_verbose bool) string {
+	if is_verbose {
+		return 'V ${v_version} ${full_hash()}'
+	}
+	hash := githash(false)
+	return 'V ${v_version} $hash'
 }
 
 // githash(x) returns the current git commit hash.
@@ -62,15 +66,19 @@ pub fn githash(should_get_from_filesystem bool) string {
 			head_content := os.read_file(git_head_file) or {
 				break
 			}
-			gcbranch_rel_path := head_content.replace('ref: ', '').trim_space()
-			gcbranch_file := os.join_path(vroot, '.git', gcbranch_rel_path)
-			// .git/refs/heads/master
-			if !os.exists(gcbranch_file) {
-				break
-			}
-			// get the full commit hash contained in the ref heads file
-			current_branch_hash := os.read_file(gcbranch_file) or {
-				break
+			mut current_branch_hash := head_content
+			if head_content.starts_with('ref: ') {
+				gcbranch_rel_path := head_content.replace('ref: ', '').trim_space()
+				gcbranch_file := os.join_path(vroot, '.git', gcbranch_rel_path)
+				// .git/refs/heads/master
+				if !os.exists(gcbranch_file) {
+					break
+				}
+				// get the full commit hash contained in the ref heads file
+				branch_hash := os.read_file(gcbranch_file) or {
+					break
+				}
+				current_branch_hash = branch_hash
 			}
 			desired_hash_length := 7
 			if current_branch_hash.len > desired_hash_length {
@@ -98,7 +106,7 @@ pub fn launch_tool(is_verbose bool, tool_name string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	set_vroot_folder(vroot)
-	tool_args := os.args[1..].join(' ')
+	tool_args := args_quote_paths_with_spaces(os.args[1..])
 	tool_exe := path_of_executable(os.real_path('$vroot/cmd/tools/$tool_name'))
 	tool_source := os.real_path('$vroot/cmd/tools/${tool_name}.v')
 	tool_command := '"$tool_exe" $tool_args'
@@ -112,9 +120,7 @@ pub fn launch_tool(is_verbose bool, tool_name string) {
 	mut should_compile := false
 	if !os.exists(tool_exe) {
 		should_compile = true
-	}
-	//
-	else {
+	} else {
 		if os.file_last_mod_unix(tool_exe) <= os.file_last_mod_unix(vexe) {
 			// v was recompiled, maybe after v up ...
 			// rebuild the tool too just in case
@@ -160,6 +166,21 @@ pub fn launch_tool(is_verbose bool, tool_name string) {
 	exit(os.system(tool_command))
 }
 
+pub fn quote_path_with_spaces(s string) string {
+	if s.contains(' ') {
+		return '"${s}"'
+	}
+	return s
+}
+
+pub fn args_quote_paths_with_spaces(args []string) string {
+	mut res := []string{}
+	for a in args {
+		res << quote_path_with_spaces(a)
+	}
+	return res.join(' ')
+}
+
 pub fn path_of_executable(path string) string {
 	$if windows {
 		return path + '.exe'
@@ -201,7 +222,7 @@ fn imax(a, b int) int {
 	}
 }
 
-fn replace_op(s string) string {
+pub fn replace_op(s string) string {
 	last_char := s[s.len - 1]
 	suffix := match last_char {
 		`+` { '_plus' }

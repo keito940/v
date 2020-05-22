@@ -44,7 +44,7 @@ Option ${dec_fn_name}(cJSON* root) {
   if (!root) {
     const char *error_ptr = cJSON_GetErrorPtr();
     if (error_ptr != NULL)	{
-      fprintf(stderr, "Error in decode() for $styp error_ptr=: %%s\\n", error_ptr);
+//      fprintf(stderr, "Error in decode() for $styp error_ptr=: %%s\\n", error_ptr);
 //      printf("\\nbad js=%%s\\n", js.str);
       return v_error(tos2(error_ptr));
     }
@@ -70,13 +70,19 @@ cJSON* ${enc_fn_name}($styp val) {
 		}
 		info := sym.info as table.Struct
 		for field in info.fields {
-			if field.attr == 'skip' {
+			if 'skip' in field.attrs {
 				continue
 			}
-			name := if field.attr.starts_with('json:') { field.attr[5..] } else { field.name }
+			mut name := field.name
+			for attr in field.attrs {
+				if attr.starts_with('json:') {
+					name = attr[5..]
+					break
+				}
+			}
 			field_type := g.typ(field.typ)
 			enc_name := js_enc_name(field_type)
-			if field.attr == 'raw' {
+			if 'raw' in field.attrs {
 				dec.writeln(' res . $field.name = tos2(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
 			} else {
 				// Now generate decoders for all field types in this struct

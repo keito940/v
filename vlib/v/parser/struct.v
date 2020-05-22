@@ -20,19 +20,27 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	} else {
 		p.check(.key_union)
 	}
-	is_c := p.tok.lit == 'C' && p.peek_tok.kind == .dot
-	is_js := p.tok.lit == 'JS' && p.peek_tok.kind == .dot
-	if is_c {
+	language := if p.tok.lit == 'C' && p.peek_tok.kind == .dot {
+		table.Language.c
+	} else if p.tok.lit == 'JS' && p.peek_tok.kind == .dot {
+		table.Language.js
+	} else {
+		table.Language.v
+	}
+	if language != .v {
 		p.next() // C || JS
 		p.next() // .
 	}
 	is_typedef := p.attr == 'typedef'
 	no_body := p.peek_tok.kind != .lcbr
-	if !is_c && !is_js && no_body {
+	if language == .v && no_body {
 		p.error('`$p.tok.lit` lacks body')
 	}
 	end_pos := p.tok.position()
 	mut name := p.check_name()
+	if language == .v && p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() {
+		p.error_with_pos('struct name `$name` must begin with capital letter', end_pos)
+	}
 	// println('struct decl $name')
 	mut ast_fields := []ast.StructField{}
 	mut fields := []table.Field{}
@@ -92,8 +100,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_field_mut = true
 				is_field_global = true
 			}
+			field_start_pos := p.tok.position()
 			field_name := p.check_name()
-			field_pos := p.tok.position()
+			field_pos := field_start_pos.extend(p.tok.position())
 			// p.warn('field $field_name')
 			typ := p.parse_type()
 			/*
@@ -117,9 +126,12 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				}
 				has_default_expr = true
 			}
-			mut attr := ast.Attr{}
+			mut attrs := []string{}
 			if p.tok.kind == .lsbr {
-				attr = p.attribute()
+				parsed_attrs := p.attributes()
+				for attr in parsed_attrs {
+					attrs << attr.name
+				}
 			}
 			if p.tok.kind == .comment {
 				comment = p.comment()
@@ -132,7 +144,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				comment: comment
 				default_expr: default_expr
 				has_default_expr: has_default_expr
-				attr: attr.name
+				attrs: attrs
+				is_public: is_field_pub
 			}
 			fields << table.Field{
 				name: field_name
@@ -142,15 +155,15 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_pub: is_field_pub
 				is_mut: is_field_mut
 				is_global: is_field_global
-				attr: attr.name
+				attrs: attrs
 			}
 			// println('struct field $ti.name $field_name')
 		}
 		p.check(.rcbr)
 	}
-	if is_c {
+	if language == .c {
 		name = 'C.$name'
-	} else if is_js {
+	} else if language == .js {
 		name = 'JS.$name'
 	} else {
 		name = p.prepend_mod(name)
@@ -162,6 +175,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			fields: fields
 			is_typedef: is_typedef
 			is_union: is_union
+			is_ref_only: p.attr == 'ref_only'
 		}
 		mod: p.mod
 		is_public: is_pub
@@ -186,9 +200,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		mut_pos: mut_pos
 		pub_pos: pub_pos
 		pub_mut_pos: pub_mut_pos
-		is_c: is_c
-		is_js: is_js
+		language: language
 		is_union: is_union
+		attr: p.attr
 	}
 }
 
@@ -269,6 +283,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	t := table.TypeSymbol{
 		kind: .interface_
 		name: interface_name
+		mod: p.mod
 		info: table.Interface{
 			types: []
 		}
@@ -278,6 +293,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	// Parse methods
 	mut methods := []ast.FnDecl{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
+		method_start_pos := p.tok.position()
 		line_nr := p.tok.line_nr
 		name := p.check_name()
 		if util.contains_capital(name) {
@@ -296,6 +312,8 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			args: args
 			file: p.file_name
 			return_type: table.void_type
+			is_pub: true
+			pos: method_start_pos.extend(p.prev_tok.position())
 		}
 		if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
 			method.return_type = p.parse_type()
@@ -306,6 +324,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			name: name
 			args: args
 			return_type: method.return_type
+			is_pub: true
 		})
 	}
 	p.check(.rcbr)

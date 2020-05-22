@@ -30,6 +30,7 @@ fn main() {
 	// println(v_hash)
 	// println(current_hash)
 	if v_hash == current_hash {
+		show_current_v_version()
 		return
 	}
 
@@ -43,14 +44,32 @@ fn main() {
 
 		backup('cmd/tools/vup.exe')
 	} $else {
-		make_result := os.exec('make') or {
+		self_result := os.exec('./v self') or {
 			panic(err)
 		}
-		println(make_result.output)
+		println(self_result.output)
+		if self_result.exit_code != 0 {
+			// v self failed, have to use make
+			println('v self failed, running make...')
+			make_result := os.exec('make') or {
+				panic(err)
+			}
+			println(make_result.output)
+		}
 	}
 
 	_ := os.exec('v cmd/tools/vup.v') or {
 		panic(err)
+	}
+	show_current_v_version()
+}
+
+fn show_current_v_version(){
+	println('Current V version:')
+	$if windows {
+		os.system('v.exe version')
+	}	$else {
+		os.system('v version')
 	}
 }
 

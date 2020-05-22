@@ -22,7 +22,6 @@ struct C.dirent {
 
 fn C.readdir(voidptr) C.dirent
 
-
 pub const (
 	args = []string{}
 	MAX_PATH = 4096
@@ -78,6 +77,58 @@ pub fn (f File) is_opened() bool {
 	return f.opened
 }
 
+/***************************** Write ops ****************************/
+
+pub fn (mut f File) write(s string) {
+	if !f.opened {
+		return
+	}
+	/*
+	$if linux {
+		$if !android {
+			C.syscall(sys_write, f.fd, s.str, s.len)
+			return
+		}
+	}
+	*/
+	C.fputs(s.str, f.cfile)
+}
+
+pub fn (mut f File) writeln(s string) {
+	if !f.opened {
+		return
+	}
+	/*
+	$if linux {
+		$if !android {
+			snl := s + '\n'
+			C.syscall(sys_write, f.fd, snl.str, snl.len)
+			return
+		}
+	}
+	*/
+	// TODO perf
+	C.fputs(s.str, f.cfile)
+	C.fputs('\n', f.cfile)
+}
+
+pub fn (mut f File) write_bytes(data voidptr, size int) {
+	C.fwrite(data, 1, size, f.cfile)
+}
+
+pub fn (mut f File) write_bytes_at(data voidptr, size, pos int) {
+	//$if linux {
+	//}
+	//$else {
+	C.fseek(f.cfile, pos, C.SEEK_SET)
+	C.fwrite(data, 1, size, f.cfile)
+	C.fseek(f.cfile, 0, C.SEEK_END)
+	//}
+}
+
+/***************************** Read ops  ****************************/
+
+
 // read_bytes reads an amount of bytes from the beginning of the file
 pub fn (f &File) read_bytes(size int) []byte {
 	return f.read_bytes_at(size, 0)
@@ -107,6 +158,7 @@ pub fn read_bytes(path string) ?[]byte {
 	return res[0..nr_read_elements * fsize]
 }
 
+
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string {
 	mode := 'rb'
@@ -126,6 +178,15 @@ pub fn read_file(path string) ?string {
 	return string(str,fsize)
 }
 
+/***************************** Utility  ops ************************/
+pub fn (mut f File) flush() {
+	if !f.opened {
+		return
+	}
+	C.fflush(f.cfile)
+}
+
+/***************************** OS ops ************************/
 // file_size returns the size of the file located in `path`.
 pub fn file_size(path string) int {
 	mut s := C.stat{}
@@ -149,9 +210,9 @@ fn C.CopyFile(&u32, &u32, int) int
 // TODO implement actual cp for linux
 pub fn cp(old, new string) ?bool {
 	$if windows {
-		_old := old.replace('/', '\\')
-		_new := new.replace('/', '\\')
-		C.CopyFile(_old.to_wide(), _new.to_wide(), false)
+		w_old := old.replace('/', '\\')
+		w_new := new.replace('/', '\\')
+		C.CopyFile(w_old.to_wide(), w_new.to_wide(), false)
 		result := C.GetLastError()
 		if result == 0 {
 			return true
@@ -224,11 +285,23 @@ pub fn mv_by_cp(source string, target string) ?bool {
 	return true
 }
 
-fn vfopen(path, mode string) &C.FILE {
+// vfopen returns an opened C file, given its path and open mode.
+// NB: os.vfopen is useful for compatibility with C libraries, that expect `FILE *`.
+// If you write pure V code, os.create or os.open are more convenient.
+pub fn vfopen(path, mode string) &C.FILE {
 	$if windows {
 		return C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
 		return C.fopen(charptr(path.str), charptr(mode.str))
+	}
+}
+
+// fileno returns the file descriptor of an opened C file
+pub fn fileno(cfile voidptr) int {
+	$if windows {
+		return C._fileno(cfile)
+	} $else {
+		return C.fileno(cfile)
 	}
 }
 
@@ -326,22 +399,7 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 	}
 }
 
-pub fn (f mut File) write_bytes_at(data voidptr, size, pos int) {
-	//$if linux {
-	//}
-	//$else {
-	C.fseek(f.cfile, pos, C.SEEK_SET)
-	C.fwrite(data, 1, size, f.cfile)
-	C.fseek(f.cfile, 0, C.SEEK_END)
-	//}
-}
 
-pub fn (f mut File) flush() {
-	if !f.opened {
-		return
-	}
-	C.fflush(f.cfile)
-}
 
 // system starts the specified command, waits for it to complete, and returns its code.
 fn vpopen(path string) voidptr {
@@ -664,7 +722,7 @@ pub fn base_dir(path string) string {
 }
 
 pub fn file_name(path string) string {
-	return path.all_after(path_separator)
+	return path.all_after_last(path_separator)
 }
 
 // input returns a one-line string from stdin, after printing a prompt
@@ -837,7 +895,7 @@ pub fn on_segfault(f voidptr) {
 fn C.getpid() int
 
 
-fn C.proc_pidpath(int, byteptr, int) int
+//fn C.proc_pidpath(int, byteptr, int) int
 
 
 fn C.readlink() int
@@ -947,6 +1005,14 @@ pub fn find_abs_path_of_executable(exepath string) ?string {
 	return error('failed to find executable')
 }
 
+// exists_in_system_path returns true if prog exists in the system's path
+pub fn exists_in_system_path(prog string) bool {
+	os.find_abs_path_of_executable(prog) or {
+		return false
+	}
+	return true
+}
+
 [deprecated]
 pub fn dir_exists(path string) bool {
 	panic('Use `os.is_dir` instead of `os.dir_exists`')
@@ -955,8 +1021,8 @@ pub fn dir_exists(path string) bool {
 // is_dir returns a boolean indicating whether the given path is a directory.
 pub fn is_dir(path string) bool {
 	$if windows {
-		_path := path.replace('/', '\\')
-		attr := C.GetFileAttributesW(_path.to_wide())
+		w_path := path.replace('/', '\\')
+		attr := C.GetFileAttributesW(w_path.to_wide())
 		if attr == u32(C.INVALID_FILE_ATTRIBUTES) {
 			return false
 		}
@@ -1238,4 +1304,70 @@ pub fn resource_abs_path(path string) string {
 		base_path = vresource
 	}
 	return os.real_path(os.join_path(base_path, path))
+}
+
+
+// open tries to open a file for reading and returns back a read-only `File` object
+pub fn open(path string) ?File {
+  /*
+	$if linux {
+		$if !android {
+			fd := C.syscall(sys_open, path.str, 511)
+			if fd == -1 {
+				return error('failed to open file "$path"')
+			}
+			return File{
+				fd: fd
+				opened: true
+			}
+		}
+	}
+  */
+	cfile := vfopen(path, 'rb')
+	if cfile == 0 {
+		return error('failed to open file "$path"')
+	}
+	fd := fileno(cfile)
+	return File {
+		cfile: cfile
+		fd: fd
+		opened: true
+	}
+}
+
+// create creates or opens a file at a specified location and returns a write-only `File` object
+pub fn create(path string) ?File {
+  /*
+	// NB: android/termux/bionic is also a kind of linux,
+	// but linux syscalls there sometimes fail,
+	// while the libc version should work.
+	$if linux {
+		$if !android {
+			//$if macos {
+			//	fd = C.syscall(398, path.str, 0x601, 0x1b6)
+			//}
+			//$if linux {
+			fd = C.syscall(sys_creat, path.str, 511)
+			//}
+			if fd == -1 {
+				return error('failed to create file "$path"')
+			}
+			file = File{
+				fd: fd
+				opened: true
+			}
+			return file
+		}
+	}
+  */
+	cfile := vfopen(path, 'wb')
+	if cfile == 0 {
+		return error('failed to create file "$path"')
+	}
+	fd := fileno(cfile)
+	return File {
+		cfile: cfile
+		fd: fd
+		opened: true
+	}
 }

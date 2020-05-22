@@ -13,7 +13,7 @@ const (
 	supported_vcs_systems = ['git', 'hg']
 	supported_vcs_folders = ['.git', '.hg']
 	supported_vcs_update_cmds = {
-		'git': 'git pull --depth=1'
+		'git': 'git pull'
 		'hg': 'hg pull --update'
 	}
 	supported_vcs_install_cmds = {
@@ -428,7 +428,7 @@ fn init_settings() {
 		s = settings
 	}
 	s.is_help = '-h' in os.args || '--help' in os.args || 'help' in os.args
-	s.is_verbose = '-verbose' in os.args || '--verbose' in os.args
+	s.is_verbose = '-verbose' in os.args || '--verbose' in os.args || '-v' in os.args
 	s.server_urls = cmdline.options(os.args, '-server-url')
 	s.vmodules_path = os.home_dir() + '.vmodules'
 }
@@ -449,7 +449,7 @@ fn get_module_meta_info(name string) ?Mod {
 			errors << 'Error details: $err'
 			continue
 		}
-		if r.status_code == 404 {
+		if r.status_code == 404 || r.text.contains('404') {
 			errors << 'Skipping module "$name", since $server_url reported that "$name" does not exist.'
 			continue
 		}
