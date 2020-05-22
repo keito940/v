@@ -1,13 +1,13 @@
 module x64winnt
 const (
-	pe_mag0 = `P`
-	pe_mag1 = `E`
-	pe_mag2 = 0x00
-	pe_mag3 = 0x00
-	win_gui_sub_system = 2
-	win_cui_sub_system = 3
-	pe_addr = 0x004
-	big_obj_magic = 
+	PE_MAG0 = `P`
+	PE_mag1 = `E`
+	PE_mag2 = 0x00
+	PE_mag3 = 0x00
+	WIN_GUI_SUB_SYSTEM = 2
+	WIN_CUI_SUB_SYSTEM = 3
+	PE_ADDR = 0x004
+	BIG_OBJ_MAGIC = 
 )
 
 struct Symbol {
