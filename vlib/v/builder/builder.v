@@ -1,7 +1,6 @@
 module builder
 
 import os
-import time
 import v.ast
 import v.table
 import v.pref
@@ -9,10 +8,6 @@ import v.util
 import v.vmod
 import v.checker
 import v.parser
-import v.errors
-import v.gen
-import v.gen.js
-import v.gen.x64
 import v.depgraph
 
 const (
@@ -39,6 +34,12 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	rdir := os.real_path(pref.path)
 	compiled_dir := if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
 	table := table.new_table()
+	if pref.use_color == .always {
+		util.emanager.set_support_color(true)
+	}
+	if pref.use_color == .never {
+		util.emanager.set_support_color(false)
+	}
 	return Builder{
 		pref: pref
 		table: table
@@ -59,6 +60,10 @@ pub fn (mut b Builder) parse_imports() {
 		ast_file := b.parsed_files[i]
 		for _, imp in ast_file.imports {
 			mod := imp.mod
+			if mod == 'builtin' {
+				verror('cannot import module "$mod"')
+				break
+			}
 			if mod in done_imports {
 				continue
 			}
@@ -67,12 +72,13 @@ pub fn (mut b Builder) parse_imports() {
 				// break
 				// println('module_search_paths:')
 				// println(b.module_search_paths)
-				panic('cannot import module "$mod" (not found)')
+				verror('cannot import module "$mod" (not found)')
+				break
 			}
 			v_files := b.v_files_from_dir(import_path)
 			if v_files.len == 0 {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_table.get_import_tok_idx(mod))
-				panic('cannot import module "$mod" (no .v files in "$import_path")')
+				verror('cannot import module "$mod" (no .v files in "$import_path")')
 			}
 			// Add all imports referenced by these libs
 			parsed_files := parser.parse_files(v_files, b.table, b.pref, b.global_scope)
@@ -99,8 +105,9 @@ pub fn (mut b Builder) parse_imports() {
 pub fn (mut b Builder) resolve_deps() {
 	graph := b.import_graph()
 	deps_resolved := graph.resolve()
-	if !deps_resolved.acyclic {
-		eprintln('warning: import cycle detected between the following modules: \n' + deps_resolved.display_cycles())
+	cycles := deps_resolved.display_cycles()
+	if cycles.len > 1 {
+		eprintln('warning: import cycle detected between the following modules: \n' + cycles)
 		// TODO: error, when v itself does not have v.table -> v.ast -> v.table cycles anymore
 		return
 	}
@@ -211,10 +218,16 @@ pub fn (b Builder) find_module_path(mod, fpath string) ?string {
 }
 
 fn (b &Builder) print_warnings_and_errors() {
+	if b.pref.output_mode == .silent {
+		if b.checker.nr_errors > 0 {
+			exit(1)
+		}
+		return
+	}
 	if b.pref.is_verbose && b.checker.nr_warnings > 1 {
 		println('$b.checker.nr_warnings warnings')
 	}
-	if b.checker.nr_warnings > 0 {
+	if b.checker.nr_warnings > 0 && !b.pref.skip_warnings {
 		for i, err in b.checker.warnings {
 			kind := if b.pref.is_verbose { '$err.reporter warning #$b.checker.nr_warnings:' } else { 'warning:' }
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
@@ -240,6 +253,24 @@ fn (b &Builder) print_warnings_and_errors() {
 			}
 		}
 		exit(1)
+	}
+	if b.table.redefined_fns.len > 0 {
+		for fn_name in b.table.redefined_fns {
+			eprintln('redefinition of function `$fn_name`')
+			// eprintln('previous declaration at')
+			// Find where this function was already declared
+			for file in b.parsed_files {
+				for stmt in file.stmts {
+					if stmt is ast.FnDecl {
+						f := stmt as ast.FnDecl
+						if f.name == fn_name {
+							println(file.path + ':' + f.pos.line_nr.str())
+						}
+					}
+				}
+			}
+			exit(1)
+		}
 	}
 }
 

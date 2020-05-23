@@ -1,7 +1,5 @@
 module gen
 
-import v.util
-
 // NB: @@@ here serve as placeholders.
 // They will be replaced with correct strings
 // for each constant, during C code generation.
@@ -65,8 +63,29 @@ const (
 	c_headers = '
 
 // c_headers
+typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
+
+#ifdef __cplusplus
+#   include <utility>
+#   define _MOV std::move
+#else
+#   define _MOV
+#endif
+
+#ifndef _WIN32
+#if defined __has_include
+#if __has_include (<execinfo.h>)
+#	include <execinfo.h>
+#else
+// Most probably musl OR __ANDROID__ ...
+int backtrace (void **__array, int __size) { return 0; }
+char **backtrace_symbols (void *const *__array, int __size){ return 0; }
+void backtrace_symbols_fd (void *const *__array, int __size, int __fd){}	
+#endif
+#endif
+#endif
 
 //#include "fns.h"
 #include <signal.h>
@@ -370,10 +389,12 @@ typedef map map_int;
 typedef map map_string;
 typedef byte array_fixed_byte_300 [300];
 typedef byte array_fixed_byte_400 [400];
+#ifndef __cplusplus
 #ifndef bool
-	typedef int bool;
-	#define true 1
-	#define false 0
+        typedef int bool;
+        #define true 1
+        #define false 0
+#endif
 #endif
 
 '

@@ -25,6 +25,12 @@ fn test_add() {
 fn test_ends_with() {
 	a := 'browser.v'
 	assert a.ends_with('.v')
+
+	s := 'V Programming Language'
+	assert s.ends_with('guage') == true
+	assert s.ends_with('Language') == true
+	assert s.ends_with('Programming Language') == true
+	assert s.ends_with('V') == false
 }
 
 fn test_between() {
@@ -457,6 +463,9 @@ fn test_all_after() {
 	assert s.all_after('fn ') == 'hello'
 	assert s.all_after('test') == s
 	assert s.all_after('') == s
+	assert s.after('e') == 'llo'
+	x := s.after('e')
+	assert x == 'llo'
 }
 
 fn test_reverse() {
@@ -646,6 +655,27 @@ fn test_repeat() {
 	// TODO Add test for negative values
 }
 
+fn test_starts_with() {
+	s := 'V Programming Language'
+	assert s.starts_with('V') == true
+	assert s.starts_with('V Programming') == true
+	assert s.starts_with('Language') == false
+}
+
+fn test_trim_prefix() {
+	s := 'V Programming Language'
+	assert s.trim_prefix('V ') == 'Programming Language'
+	assert s.trim_prefix('V Programming ') == 'Language'
+	assert s.trim_prefix('Language') == s
+}
+
+fn test_trim_suffix() {
+	s := 'V Programming Language'
+	assert s.trim_suffix(' Language') == 'V Programming'
+	assert s.trim_suffix(' Programming Language') == 'V'
+	assert s.trim_suffix('V') == s
+}
+
 fn test_raw() {
 	raw := r'raw\nstring'
 	lines := raw.split('\n')
@@ -739,3 +769,12 @@ fn test_string_literal_with_backslash(){
 		  Three'
 	assert b == 'OneTwoThree'
 }
+
+/*
+type MyString string
+
+fn test_string_alias() {
+	s := MyString('hi')
+	ss := s + '!'
+}
+*/

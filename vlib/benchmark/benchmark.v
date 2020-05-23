@@ -46,24 +46,24 @@ SPENT   462 ms in code_2
 
 
 const (
-	BOK = term.ok_message('OK  ')
-	BFAIL = term.fail_message('FAIL')
-	BSKIP  = term.warn_message('SKIP')
-	BSPENT = term.ok_message('SPENT')
+	b_ok = term.ok_message('OK  ')
+	b_fail = term.fail_message('FAIL')
+	b_skip  = term.warn_message('SKIP')
+	b_spent = term.ok_message('SPENT')
 )
 
 pub struct Benchmark {
 pub mut:
 	bench_timer      time.StopWatch
+	verbose          bool
+	no_cstep         bool
 	step_timer       time.StopWatch
 	ntotal           int
 	nok              int
 	nfail            int
 	nskip            int
-	verbose          bool
 	nexpected_steps  int
 	cstep            int
-	no_cstep         bool
 	bok              string
 	bfail            string
 }
@@ -90,52 +90,52 @@ pub fn new_benchmark_pointer() &Benchmark {
 	}
 }
 
-pub fn (b mut Benchmark) set_total_expected_steps(n int) {
+pub fn (mut b Benchmark) set_total_expected_steps(n int) {
 	b.nexpected_steps = n
 }
 
-pub fn (b mut Benchmark) stop() {
+pub fn (mut b Benchmark) stop() {
 	b.bench_timer.stop()
 }
 
-pub fn (b mut Benchmark) step() {
+pub fn (mut b Benchmark) step() {
 	b.step_timer.restart()
 	if !b.no_cstep {
 		b.cstep++
 	}
 }
 
-pub fn (b mut Benchmark) fail() {
+pub fn (mut b Benchmark) fail() {
 	b.step_timer.stop()
 	b.ntotal++
 	b.nfail++
 }
 
-pub fn (b mut Benchmark) ok() {
+pub fn (mut b Benchmark) ok() {
 	b.step_timer.stop()
 	b.ntotal++
 	b.nok++
 }
 
-pub fn (b mut Benchmark) skip() {
+pub fn (mut b Benchmark) skip() {
 	b.step_timer.stop()
 	b.ntotal++
 	b.nskip++
 }
 
-pub fn (b mut Benchmark) fail_many(n int) {
+pub fn (mut b Benchmark) fail_many(n int) {
 	b.step_timer.stop()
 	b.ntotal += n
 	b.nfail += n
 }
 
-pub fn (b mut Benchmark) ok_many(n int) {
+pub fn (mut b Benchmark) ok_many(n int) {
 	b.step_timer.stop()
 	b.ntotal += n
 	b.nok += n
 }
 
-pub fn (b mut Benchmark) neither_fail_nor_ok() {
+pub fn (mut b Benchmark) neither_fail_nor_ok() {
 	b.step_timer.stop()
 }
 
@@ -145,10 +145,10 @@ pub fn start() Benchmark {
 	return b
 }
 
-pub fn (b mut Benchmark) measure(label string) i64 {
+pub fn (mut b Benchmark) measure(label string) i64 {
 	b.ok()
 	res := b.step_timer.elapsed().microseconds()
-	println(b.step_message_with_label(BSPENT, 'in $label'))
+	println(b.step_message_with_label(b_spent, 'in $label'))
 	b.step()
 	return res
 }
@@ -184,15 +184,15 @@ pub fn (b &Benchmark) step_message(msg string) string {
 }
 
 pub fn (b &Benchmark) step_message_ok(msg string) string {
-	return b.step_message_with_label(BOK, msg)
+	return b.step_message_with_label(b_ok, msg)
 }
 
 pub fn (b &Benchmark) step_message_fail(msg string) string {
-	return b.step_message_with_label(BFAIL, msg)
+	return b.step_message_with_label(b_fail, msg)
 }
 
 pub fn (b &Benchmark) step_message_skip(msg string) string {
-	return b.step_message_with_label(BSKIP, msg)
+	return b.step_message_with_label(b_skip, msg)
 }
 
 pub fn (b &Benchmark) total_message(msg string) string {

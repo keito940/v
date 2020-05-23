@@ -29,8 +29,8 @@ jobs:
       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
     - name: Build v
       run: |
-        echo $VFLAGS 
-        make -j4 
+        echo $VFLAGS
+        make -j4
         ./v -cg -o v cmd/v
     - name: Test v->c
       run: |
@@ -40,6 +40,8 @@ jobs:
 #        ./v -silent test-compiler
     - name: Fixed tests
       run: ./v test-fixed
+    - name: Test building v tools
+      run: ./v build-tools
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
 
@@ -115,6 +117,7 @@ jobs:
         mkdir -p ~/.vmodules
         ln -s $(pwd) ~/.vmodules/ui
         ../v examples/rectangles.v
+        ../v examples/users.v
 
   ubuntu:
     runs-on: ubuntu-18.04
@@ -170,47 +173,6 @@ jobs:
 #      with:
 #        github-token: ${{ secrets.GITHUB_TOKEN }}
 
-
-  ubuntu-prebuilt:
-    runs-on: ubuntu-18.04
-    steps:
-    - name: Install dependencies
-      run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
-    - name: Download V
-      run: wget https://github.com/vlang/v/releases/latest/download/v_linux.zip && unzip v_linux.zip && ./v -version
-    - name: Test V
-      run: ./v examples/hello_world.v && examples/hello_world #&& ./v -silent build-examples
-
-
-  macos-prebuilt:
-    runs-on: macOS-latest
-    steps:
-    - name: Install dependencies
-      run: |
-        brew install freetype glfw openssl sdl2 sdl2_ttf sdl2_mixer sdl2_image
-        export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
-    - name: Download V
-      run: wget https://github.com/vlang/v/releases/latest/download/v_macos.zip && unzip v_macos.zip && ./v -version
-    - name: Test V
-      run: ./v examples/hello_world.v && examples/hello_world #&& ./v -silent build-examples
-
-  windows-prebuilt:
-    runs-on: windows-2019
-    steps:
-    - name: Download V
-      shell: cmd
-      run: |
-        echo Downloading V...
-        curl -L https://github.com/vlang/v/releases/latest/download/v_windows.zip -o v_windows.zip
-        echo Unzipping...
-        unzip v_windows.zip
-        v.exe -version
-        echo Done
-        dir
-    - name: Test V
-      shell: cmd
-      run: v.exe examples\hello_world.v && examples\hello_world.exe
-
   ubuntu-musl:
     runs-on: ubuntu-18.04
     env:
@@ -250,14 +212,16 @@ jobs:
     #- uses: actions/setup-node@v1
     #  with:
     #    node-version: 12.x
-    - name: Install dependencies
-      run: |
-        git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
-        .\.github\workflows\windows-install-sdl.bat
     - name: Build
       run: |
         gcc --version
         .\make.bat -gcc
+    - name: Test new v.c
+      run: .\v.exe -o v.c cmd/v && gcc -municode -w v.c
+    - name: Install dependencies
+      run: |
+        .\v.exe setup-freetype
+        .\.github\workflows\windows-install-sdl.bat
     - name: Fixed tests
       run: |
         .\v.exe test-fixed
@@ -281,17 +245,15 @@ jobs:
     #- uses: actions/setup-node@v1
     #  with:
     #    node-version: 12.x
-    - name: Install dependencies
-      run: |
-        git clone --depth=1 https://github.com/ubawurinna/freetype-windows-binaries.git thirdparty/freetype/
-        .\.github\workflows\windows-install-sdl.bat
     - name: Build
       run: |
         echo %VFLAGS%
         echo $VFLAGS
         .\make.bat -msvc
-    - name: quick debug
-      run: ./v -stats vlib/strconv/format_test.v
+    - name: Install dependencies
+      run: |
+        .\v.exe setup-freetype
+        .\.github\workflows\windows-install-sdl.bat
     - name: Fixed tests
       run: |
         ./v -cg cmd\tools\vtest-fixed.v
@@ -313,3 +275,59 @@ jobs:
       run: make
     - name: Check docs line length
       run: ./v run cmd/tools/check-md.v doc/docs.md CHANGELOG.md
+
+
+
+  compilable-v-c-and-v-win-c:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: |
+        sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list
+        sudo apt-get update
+        sudo apt install --quiet -y mingw-w64 wine-stable winetricks
+    - name: Build V
+      run: make -j4
+    - name: v.c can be compiled and run
+      run: |
+        ./v -os cross -o /tmp/v.c cmd/v
+        gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm -lpthread
+        ls -lart v_from_vc
+        ./v_from_vc version
+    - name: v_win.c can be compiled and run
+      run: |
+        ./v -os windows -o /tmp/v_win.c cmd/v
+        x86_64-w64-mingw32-gcc  /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe
+        ls -lart v_from_vc.exe
+        winetricks nocrashdialog
+        wine v_from_vc.exe version
+
+
+  ubuntu-c-plus-plus:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind g++-9
+    - name: Build V
+      run: make -j4
+    - name: g++ version
+      run: g++-9 --version
+    - name: Running tests with g++
+      run: ./v -cc g++-9 test-fixed
+    - name: V self compilation with g++
+      run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++-9 -o v3 cmd/v
+
+  install-modules:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: sudo apt-get install --quiet -y libssl-dev
+    - name: Build V
+      run: make -j4
+    - name: Installing V modules
+      run: |
+        ./v install ui
+        ./v install nedpals.args

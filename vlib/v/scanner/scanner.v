@@ -75,21 +75,6 @@ pub fn new_scanner(text string, comments_mode CommentsMode) &Scanner {
 	return s
 }
 
-pub fn (s &Scanner) add_fn_main_and_rescan(pos int) {
-	// NB: the text may have ended in // comment, which would hide the ending }
-	// To avoid that, we need a \n right before it.
-	if pos > 0 {
-		s.text = s.text[..pos] + 'fn main() {' + s.text[pos..] + '\n}'
-		s.pos = pos
-		s.is_started = false
-	} else {
-		s.text = 'fn main() {' + s.text + '\n}'
-		s.pos = 0
-		s.line_nr = 0
-		s.is_started = false
-	}
-}
-
 fn (s &Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Token {
 	return token.Token{
 		kind: tok_kind
@@ -100,7 +85,7 @@ fn (s &Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Token 
 	}
 }
 
-fn (s mut Scanner) ident_name() string {
+fn (mut s Scanner) ident_name() string {
 	start := s.pos
 	s.pos++
 	for s.pos < s.text.len && (util.is_name_char(s.text[s.pos]) || s.text[s.pos].is_digit()) {
@@ -109,6 +94,48 @@ fn (s mut Scanner) ident_name() string {
 	name := s.text[start..s.pos]
 	s.pos--
 	return name
+}
+
+// ident_fn_name look ahead and return name of function if possible, otherwise empty string
+fn (mut s Scanner) ident_fn_name() string {
+	start := s.pos
+	mut pos := s.pos
+	pos++
+	// Search for function scope start
+	for pos < s.text.len && s.text[pos] != `{` {
+		pos++
+	}
+	if pos >= s.text.len {
+		return ""
+	}
+	// Search backwards for "first" occurrence of function open paranthesis
+	for pos > start && s.text[pos] != `(` {
+		pos--
+	}
+	if pos < start {
+		return ""
+	}
+	// Search backwards for end position of function name
+	for pos > start && !util.is_func_char(s.text[pos]) {
+		pos--
+	}
+	end_pos := pos + 1
+	if pos < start {
+		return ""
+	}
+	// Search for the start position
+	for pos > start && util.is_func_char(s.text[pos]) {
+		pos--
+	}
+	start_pos := pos + 1
+	if pos < start || pos >= s.text.len  {
+		return ""
+	}
+	if s.text[start_pos].is_digit() || end_pos > s.text.len || end_pos <= start_pos || end_pos <= start || start_pos <= start {
+		return ""
+	}
+	fn_name := s.text[start_pos..end_pos]
+	return fn_name
 }
 
 fn filter_num_sep(txt byteptr, start int, end int) string {
@@ -128,8 +155,9 @@ fn filter_num_sep(txt byteptr, start int, end int) string {
 	}
 }
 
-fn (s mut Scanner) ident_bin_number() string {
+fn (mut s Scanner) ident_bin_number() string {
 	mut has_wrong_digit := false
+	mut first_wrong_digit_pos := 0
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0b'
@@ -141,15 +169,18 @@ fn (s mut Scanner) ident_bin_number() string {
 			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
+				first_wrong_digit_pos = s.pos
 				first_wrong_digit = c
 			}
 		}
 		s.pos++
 	}
 	if start_pos + 2 == s.pos {
+		s.pos-- // adjust error position
 		s.error('number part of this binary is not provided')
 	}
 	else if has_wrong_digit {
+		s.pos = first_wrong_digit_pos // adjust error position
 		s.error('this binary number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
@@ -157,8 +188,9 @@ fn (s mut Scanner) ident_bin_number() string {
 	return number
 }
 
-fn (s mut Scanner) ident_hex_number() string {
+fn (mut s Scanner) ident_hex_number() string {
 	mut has_wrong_digit := false
+	mut first_wrong_digit_pos := 0
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0x'
@@ -170,15 +202,18 @@ fn (s mut Scanner) ident_hex_number() string {
 			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
+				first_wrong_digit_pos = s.pos
 				first_wrong_digit = c
 			}
 		}
 		s.pos++
 	}
 	if start_pos + 2 == s.pos {
+		s.pos-- // adjust error position
 		s.error('number part of this hexadecimal is not provided')
 	}
 	else if has_wrong_digit {
+		s.pos = first_wrong_digit_pos // adjust error position
 		s.error('this hexadecimal number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
@@ -186,8 +221,9 @@ fn (s mut Scanner) ident_hex_number() string {
 	return number
 }
 
-fn (s mut Scanner) ident_oct_number() string {
+fn (mut s Scanner) ident_oct_number() string {
 	mut has_wrong_digit := false
+	mut first_wrong_digit_pos := 0
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0o'
@@ -199,15 +235,18 @@ fn (s mut Scanner) ident_oct_number() string {
 			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
+				first_wrong_digit_pos = s.pos
 				first_wrong_digit = c
 			}
 		}
 		s.pos++
 	}
 	if start_pos + 2 == s.pos {
+		s.pos-- // adjust error position
 		s.error('number part of this octal is not provided')
 	}
 	else if has_wrong_digit {
+		s.pos = first_wrong_digit_pos // adjust error position
 		s.error('this octal number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
@@ -215,8 +254,9 @@ fn (s mut Scanner) ident_oct_number() string {
 	return number
 }
 
-fn (s mut Scanner) ident_dec_number() string {
+fn (mut s Scanner) ident_dec_number() string {
 	mut has_wrong_digit := false
+	mut first_wrong_digit_pos := 0
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	// scan integer part
@@ -228,6 +268,7 @@ fn (s mut Scanner) ident_dec_number() string {
 			}
 			else if !has_wrong_digit {
 				has_wrong_digit = true
+				first_wrong_digit_pos = s.pos
 				first_wrong_digit = c
 			}
 		}
@@ -254,6 +295,7 @@ fn (s mut Scanner) ident_dec_number() string {
 						}
 						else if !has_wrong_digit {
 							has_wrong_digit = true
+							first_wrong_digit_pos = s.pos
 							first_wrong_digit = c
 						}
 					}
@@ -300,6 +342,7 @@ fn (s mut Scanner) ident_dec_number() string {
 				}
 				else if !has_wrong_digit {
 					has_wrong_digit = true
+					first_wrong_digit_pos = s.pos
 					first_wrong_digit = c
 				}
 			}
@@ -308,10 +351,12 @@ fn (s mut Scanner) ident_dec_number() string {
 	}
 	if has_wrong_digit {
 	// error check: wrong digit
+		s.pos = first_wrong_digit_pos // adjust error position
 		s.error('this number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	else if s.text[s.pos - 1] in [`e`, `E`] {
 	// error check: 5e
+		s.pos-- // adjust error position
 		s.error('exponent has no digits')
 	}
 	else if s.pos < s.text.len && s.text[s.pos] == `.` && !is_range && !is_float_without_fraction && !call_method {
@@ -328,7 +373,7 @@ fn (s mut Scanner) ident_dec_number() string {
 	return number
 }
 
-fn (s mut Scanner) ident_number() string {
+fn (mut s Scanner) ident_number() string {
 	if s.expect('0b', s.pos) {
 		return s.ident_bin_number()
 	}
@@ -343,7 +388,7 @@ fn (s mut Scanner) ident_number() string {
 	}
 }
 
-fn (s mut Scanner) skip_whitespace() {
+fn (mut s Scanner) skip_whitespace() {
 	// if s.is_vh { println('vh') return }
 	for s.pos < s.text.len && s.text[s.pos].is_space() {
 		if util.is_nl(s.text[s.pos]) && s.is_vh {
@@ -357,13 +402,13 @@ fn (s mut Scanner) skip_whitespace() {
 	}
 }
 
-fn (s mut Scanner) end_of_file() token.Token {
+fn (mut s Scanner) end_of_file() token.Token {
 	s.pos = s.text.len
 	s.inc_line_number()
 	return s.new_token(.eof, '', 1)
 }
 
-pub fn (s mut Scanner) scan() token.Token {
+pub fn (mut s Scanner) scan() token.Token {
 	// if s.comments_mode == .parse_comments {
 	// println('\nscan()')
 	// }
@@ -407,7 +452,11 @@ pub fn (s mut Scanner) scan() token.Token {
 		// Check if not .eof to prevent panic
 		next_char := if s.pos + 1 < s.text.len { s.text[s.pos + 1] } else { `\0` }
 		if token.is_key(name) {
-			return s.new_token(token.key_to_token(name), name, name.len)
+			kind := token.key_to_token(name)
+			if kind == .key_fn {
+				s.fn_name = s.ident_fn_name()
+			}
+			return s.new_token(kind, name, name.len)
 		}
 		// 'asdf $b' => "b" is the last name in the string, dont start parsing string
 		// at the next ', skip it
@@ -837,7 +886,7 @@ fn (s &Scanner) count_symbol_before(p int, sym byte) int {
 	return count
 }
 
-fn (s mut Scanner) ident_string() string {
+fn (mut s Scanner) ident_string() string {
 	q := s.text[s.pos]
 	is_quote := q == single_quote || q == double_quote
 	is_raw := is_quote && s.pos > 0 && s.text[s.pos - 1] == `r`
@@ -925,7 +974,7 @@ fn trim_slash_line_break(s string) string {
 	return ret_str
 }
 
-fn (s mut Scanner) ident_char() string {
+fn (mut s Scanner) ident_char() string {
 	start := s.pos
 	slash := `\\`
 	mut len := 0
@@ -974,11 +1023,11 @@ fn (s &Scanner) expect(want string, start_pos int) bool {
 	return true
 }
 
-fn (s mut Scanner) debug_tokens() {
+fn (mut s Scanner) debug_tokens() {
 	s.pos = 0
 	s.is_started = false
 	s.is_debug = true
-	fname := s.file_path.all_after(os.path_separator)
+	fname := s.file_path.all_after_last(os.path_separator)
 	println('\n===DEBUG TOKENS $fname===')
 	for {
 		tok := s.scan()
@@ -998,18 +1047,18 @@ fn (s mut Scanner) debug_tokens() {
 	}
 }
 
-fn (s mut Scanner) ignore_line() {
+fn (mut s Scanner) ignore_line() {
 	s.eat_to_end_of_line()
 	s.inc_line_number()
 }
 
-fn (s mut Scanner) eat_to_end_of_line() {
+fn (mut s Scanner) eat_to_end_of_line() {
 	for s.pos < s.text.len && s.text[s.pos] != `\n` {
 		s.pos++
 	}
 }
 
-fn (s mut Scanner) inc_line_number() {
+fn (mut s Scanner) inc_line_number() {
 	s.last_nl_pos = s.pos
 	s.line_nr++
 	s.line_ends << s.pos
@@ -1023,7 +1072,7 @@ pub fn (s &Scanner) error(msg string) {
 		line_nr: s.line_nr
 		pos: s.pos
 	}
-	eprintln(util.formatted_error('error', msg, s.file_path, pos))
+	eprintln(util.formatted_error('error:', msg, s.file_path, pos))
 	exit(1)
 }
 

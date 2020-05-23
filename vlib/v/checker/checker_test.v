@@ -1,24 +1,33 @@
 import os
 import term
 
-fn clean_line_endings(s string) string {
-	return s.trim_space().replace(' \n', '\n').replace(' \r\n', '\n').replace('\r\n', '\n').trim('\n')
-}
-
 fn test_all() {
 	mut total_errors := 0
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	os.chdir(vroot)
-	dir := 'vlib/v/checker/tests'
+	classic_dir := 'vlib/v/checker/tests'
+	classic_tests := get_tests_in_dir(classic_dir)
+	global_dir := '$classic_dir/globals'
+	global_tests := get_tests_in_dir(global_dir)
+	// -prod so that warns are errors
+	total_errors += check_path(vexe, classic_dir, '-prod', '.out', classic_tests)
+	total_errors += check_path(vexe, global_dir, '--enable-globals', '.out', global_tests)
+	total_errors += check_path(vexe, classic_dir, '--enable-globals run', '.run.out', ['globals_error.vv'])
+	assert total_errors == 0
+}
+
+fn get_tests_in_dir(dir string) []string {
 	files := os.ls(dir) or {
 		panic(err)
 	}
-	tests := files.filter(it.ends_with('.vv'))
-	if tests.len == 0 {
-		println('no compiler tests found')
-		assert false
-	}
+	mut tests := files.filter(it.ends_with('.vv'))
+	tests.sort()
+	return tests
+}
+
+fn check_path(vexe, dir, voptions, result_extension string, tests []string) int {
+	mut nb_fail := 0
 	for test in tests {
 		path := os.join_path(dir, test).replace('\\', '/')
 		program := path.replace('.vv', '.v')
@@ -26,11 +35,10 @@ fn test_all() {
 		os.cp(path, program) or {
 			panic(err)
 		}
-		// -prod so that warn are errors
-		res := os.exec('$vexe -prod $program') or {
+		res := os.exec('$vexe $voptions $program') or {
 			panic(err)
 		}
-		mut expected := os.read_file(program.replace('.v', '') + '.out') or {
+		mut expected := os.read_file(program.replace('.v', '') + result_extension) or {
 			panic(err)
 		}
 		expected = clean_line_endings(expected)
@@ -44,11 +52,15 @@ fn test_all() {
 			println('found:')
 			println(found)
 			println('============\n')
-			total_errors++
+			nb_fail += 1
 		} else {
 			println(term.green('OK'))
-			os.rm( program )
+			os.rm(program)
 		}
 	}
-	assert total_errors == 0
+	return nb_fail
+}
+
+fn clean_line_endings(s string) string {
+	return s.trim_space().replace(' \n', '\n').replace(' \r\n', '\n').replace('\r\n', '\n').trim('\n')
 }

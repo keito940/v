@@ -9,7 +9,7 @@ fn test_err_with_code() {
 		return
 	}
 	assert false
-	println(v)	// suppress not used error
+	println(v) // suppress not used error
 }
 
 fn opt_err() ?string {
@@ -22,7 +22,7 @@ fn test_err() {
 		return
 	}
 	assert false
-	println(v)	// suppress not used error
+	println(v) // suppress not used error
 }
 
 fn err_call(ok bool) ?int {
@@ -60,6 +60,19 @@ fn test_if_opt() {
 	assert 1 == 1
 }
 
+fn test_if_else_opt() {
+	if val := err_call(true) {
+		assert val == 42
+	} else {
+		assert false
+	}
+	if _ := err_call(false) {
+		assert false
+	} else {
+		assert true
+	}
+}
+
 fn for_opt_default() ?string {
 	return error('awww')
 }
@@ -80,8 +93,89 @@ fn foo_str() ?string {
 	return 'something'
 }
 
+fn propagate_optional(b bool) ?int {
+	a := err_call(b)?
+	return a
+}
+
+fn propagate_different_type(b bool) ?bool {
+	err_call(b)?
+	return true
+}
+
+fn test_propagation() {
+	a := propagate_optional(true) or {
+		0
+	}
+	assert a == 42
+	if _ := propagate_optional(false) {
+		assert false
+	}
+	b := propagate_different_type(true) or {
+		false
+	}
+	assert b == true
+	if _ := propagate_different_type(false) {
+		assert false
+	}
+}
+
 fn test_q() {
 	// assert foo_ok()? == true
+}
+
+fn or_return_val() int {
+	a := ret_none() or {
+		return 1
+	}
+	return a
+}
+
+fn or_return_error() ?int {
+	a := ret_none() or {
+		return error('Nope')
+	}
+	return a
+}
+
+fn or_return_none() ?int {
+	a := ret_none() or {
+		return none
+	}
+	return a
+}
+
+fn test_or_return() {
+	assert or_return_val() == 1
+	if _ := or_return_error() {
+		assert false
+	} else {
+		assert true
+	}
+	if _ := or_return_none() {
+		assert false
+	} else {
+		assert true
+	}
+}
+
+fn test_reassignment() {
+	mut x2 := foo_ok() or {
+		assert false
+		return
+	}
+	assert x2 == 777
+	x2 = 100
+	assert x2 == 100
+	x2 += 1
+	assert x2 == 101
+	//
+	mut x3 := 0
+	x3 = foo_ok() or {
+		assert false
+		return
+	}
+	assert x3 == 777
 }
 
 struct Person {
@@ -111,7 +205,7 @@ fn test_field_or() {
 		'default'
 	}
 	assert mytitle == 'default'
-*/
+	*/
 }
 
 struct Thing {
@@ -126,7 +220,7 @@ fn test_opt_field() {
 	t.opt = 5
 	val := t.opt or { return }
 	assert val == 5
-*/
+	*/
 }
 
 fn opt_ptr(a &int) ?&int {
@@ -137,6 +231,11 @@ fn opt_ptr(a &int) ?&int {
 }
 
 fn test_opt_ptr() {
+	if true {
+	}
+	//
+	else {
+	}
 	a := 3
 	mut r := opt_ptr(&a) or {
 		&int(0)
@@ -168,3 +267,36 @@ fn test_multi_return_opt() {
 	}
 }
 */
+fn foo() ?void {
+	return error('something')
+}
+
+fn test_optional_void() {
+	foo() or {
+		println(err)
+		assert err == 'something'
+		return
+	}
+}
+
+fn bar() ? {
+	return error('bar error')
+}
+
+fn test_optional_void_only_question() {
+	bar() or {
+		println(err)
+		assert err == 'bar error'
+		return
+	}
+}
+
+fn test_optional_void_with_empty_or() {
+	foo() or {}
+	assert true
+}
+
+fn test_optional_val_with_empty_or() {
+	ret_none() or {}
+	assert true
+}

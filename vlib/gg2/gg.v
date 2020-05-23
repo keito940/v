@@ -117,14 +117,14 @@ pub fn (gg &GG) draw_text(x, y int, text string, cfg gx.TextCfg) {
 
 pub fn (ctx &GG) draw_text_def(x, y int, text string) {
 	cfg := gx.TextCfg {
-		color: gx.Black
+		color: gx.black
 		size: default_font_size
 		align: gx.align_left
 	}
 	ctx.draw_text(x, y, text, cfg)
 }
 
-pub fn (gg mut GG) init_font() {
+pub fn (mut gg GG) init_font() {
 	// TODO
 	gg.fons =g_fons
 	gg.font_normal=g_font_normal

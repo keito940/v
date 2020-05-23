@@ -8,7 +8,7 @@ import time
 import crypto.md5
 
 const (
-	UnknownAssetTypeError = 'vweb.assets: unknown asset type'
+	unknown_asset_type_error = 'vweb.assets: unknown asset type'
 )
 
 struct AssetManager {
@@ -33,12 +33,12 @@ pub fn new_manager() &AssetManager {
 }
 
 // add_css adds a css asset
-pub fn (am mut AssetManager) add_css(file string) bool {
+pub fn (mut am AssetManager) add_css(file string) bool {
 	return am.add('css', file)
 }
 
 // add_js adds a js asset
-pub fn (am mut AssetManager) add_js(file string) bool {
+pub fn (mut am AssetManager) add_js(file string) bool {
 	return am.add('js', file)
 }
 
@@ -149,8 +149,8 @@ fn (am AssetManager) include(asset_type string, combine bool) string {
 }
 
 // dont return option until size limit is removed
-// fn (am mut AssetManager) add(asset_type, file string) ?bool {
-fn (am mut AssetManager) add(asset_type, file string) bool {
+// fn (mut am AssetManager) add(asset_type, file string) ?bool {
+fn (mut am AssetManager) add(asset_type, file string) bool {
 	if !os.exists(file) {
 		// return error('vweb.assets: cannot add asset $file, it does not exist')
 		return false
@@ -164,7 +164,7 @@ fn (am mut AssetManager) add(asset_type, file string) bool {
 	} else if asset_type == 'js' {
 		am.js << asset
 	} else {
-		panic('$UnknownAssetTypeError ($asset_type).')
+		panic('$unknown_asset_type_error ($asset_type).')
 	}
 	return true
 }
@@ -181,7 +181,7 @@ fn (am AssetManager) exists(asset_type, file string) bool {
 
 fn (am AssetManager) get_assets(asset_type string) []Asset {
 	if asset_type != 'css' && asset_type != 'js' {
-		panic('$UnknownAssetTypeError ($asset_type).')
+		panic('$unknown_asset_type_error ($asset_type).')
 	}
 	assets := if asset_type == 'css' {
 		am.css

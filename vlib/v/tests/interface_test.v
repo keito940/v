@@ -3,6 +3,7 @@ struct Dog {
 }
 
 struct Cat {
+mut:
 	breed string
 }
 
@@ -25,9 +26,13 @@ fn (c Cat) name_detailed(pet_name string) string {
 	return '$pet_name the ${typeof(c)}, breed:${c.breed}'
 }
 
-// utility function to convert to string, as a sample
+fn (mut c Cat) set_breed(new string) {
+	c.breed = new
+}
+
+// utility function to override default conversion to string, as a sample
 fn (c Cat) str() string {
-	return 'Cat: $c.breed'
+	return 'Custom string conversion for Cat: $c.breed'
 }
 
 fn (d Dog) speak(s string) {
@@ -44,7 +49,11 @@ fn (d Dog) name_detailed(pet_name string) string {
 	return '$pet_name the ${typeof(d)}, breed:${d.breed}'
 }
 
-// do not add to Dog the utility function 'str', as a sample
+fn (mut d Dog) set_breed(new string) {
+	println('Nah')
+}
+
+// do not add to Dog the utility function 'str', so the default one will be used, as a sample
 fn test_todo() {
 	if true {
 	} else {
@@ -56,10 +65,25 @@ fn perform_speak(a Animal) {
 	assert true
 	name := a.name()
 	assert name == 'Dog' || name == 'Cat'
+	if a is Dog {
+		assert name == 'Dog'
+	}
+	println(a.name())
+	println('Got animal of type: ${typeof(a)}') // TODO: get implementation type (if possible)
+	// assert a is Dog || a is Cat // TODO: enable when available
+}
+
+fn perform_speak_on_ptr(a &Animal) {
+	a.speak('Hi !')
+	assert true
+	name := a.name()
+	assert name == 'Dog' || name == 'Cat'
 	// if a is Dog {
 	// assert name == 'Dog'
 	// }
 	println(a.name())
+	println('Got animal of type: ${typeof(a)}') // TODO: get implementation type (if possible)
+	// assert a is Dog || a is Cat // TODO: enable when available
 }
 
 fn test_perform_speak() {
@@ -67,11 +91,16 @@ fn test_perform_speak() {
 		breed: 'Labrador Retriever'
 	}
 	perform_speak(dog)
+	perform_speak_on_ptr(dog)
 	cat := Cat{
 		breed: 'Persian'
 	}
 	perform_speak(cat)
 	perform_speak(Cat{
+		breed: 'Persian'
+	})
+	perform_speak_on_ptr(cat)
+	perform_speak_on_ptr(Cat{
 		breed: 'Persian'
 	})
 	handle_animals([dog, cat])
@@ -80,6 +109,19 @@ fn test_perform_speak() {
 		speaker: dog
 	}
 	*/
+}
+
+fn change_animal_breed(a &Animal, new string) {
+	a.set_breed(new)
+}
+
+fn test_interface_ptr_modification() {
+	mut cat := Cat{
+		breed: 'Persian'
+	}
+	// TODO Should fail and require `mut cat`
+	change_animal_breed(cat, 'Siamese')
+	assert cat.breed == 'Siamese'
 }
 
 fn perform_name_detailed(a Animal) {
@@ -92,20 +134,33 @@ fn test_perform_name_detailed() {
 	dog := Dog{
 		breed: 'Labrador Retriever'
 	}
-	println('Test on Dog: $dog ...')
+	println('Test on Dog: $dog ...') // using default conversion to string
 	perform_name_detailed(dog)
 	cat := Cat{}
-	println('Test on Cat: $cat ...')
+	println('Test on empty Cat: $cat ...')
 	perform_speak(cat)
-	println('Test on another Cat: ...')
+	println('Test on a Persian Cat: ...')
 	perform_speak(Cat{
 		breed: 'Persian'
 	})
+	cat_persian2 := Cat{
+		breed: 'Persian'
+	}
+	println('Test on another Persian Cat: "$cat_persian2" ...')
+	perform_speak(cat_persian2)
+	cat_persian2_str := cat_persian2.str()
+	println("Persian Cat 2: '$cat_persian2_str' ...")
+	assert cat_persian2_str == 'Custom string conversion for Cat: Persian'
 	println('Test (dummy/empty) on array of animals ...')
 	handle_animals([dog, cat])
+	handle_animals_mutable([dog, cat])
+	assert true
 }
 
 fn handle_animals(a []Animal) {
+}
+
+fn handle_animals_mutable(a []Animal) {
 }
 
 interface Register {
@@ -142,6 +197,7 @@ interface Animal {
 	name() string
 	name_detailed(pet_name string) string
 	speak(s string)
+	set_breed(s string)
 }
 
 fn test_interface_array() {
@@ -150,10 +206,22 @@ fn test_interface_array() {
 	animals = [Cat{}, Dog{
 		breed: 'Labrador Retriever'
 	}]
+	assert true
 	animals << Cat{}
 	assert true
 	// TODO .str() from the real types should be called
 	// println('Animals array contains: ${animals.str()}') // explicit call to 'str' function
 	// println('Animals array contains: ${animals}') // implicit call to 'str' function
+	assert animals.len == 3
+}
+
+fn test_interface_ptr_array() {
+	mut animals := []&Animal{}
+	animals = [Cat{}, Dog{
+		breed: 'Labrador Retriever'
+	}]
+	assert true
+	animals << Cat{}
+	assert true
 	assert animals.len == 3
 }

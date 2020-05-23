@@ -8,22 +8,30 @@ import v.table
 import v.token
 import v.util
 
-pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
+pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.position()
-	name := p.check_name()
-	fn_name := if is_c {
-		'C.$name'
-	} else if is_js {
-		'JS.$name'
+	fn_name := if language == .c {
+		'C.${p.check_name()}'
+	} else if language == .js {
+		'JS.${p.check_js_name()}'
 	} else if mod.len > 0 {
-		'${mod}.$name'
+		'${mod}.${p.check_name()}'
 	} else {
-		name
+		p.check_name()
 	}
+	mut or_kind := ast.OrKind.absent
 	if fn_name == 'json.decode' {
-		// Makes name_expr() parse the type (`User` in `json.decode(User, txt)`)`
-		p.expecting_type = true
+		p.expecting_type = true // Makes name_expr() parse the type `User` in `json.decode(User, txt)`
 		p.expr_mod = ''
+		or_kind = .block
+	}
+	mut generic_type := table.void_type
+	if p.tok.kind == .lt {
+		// `foo<int>(10)`
+		p.next() // `<`
+		generic_type = p.parse_type()
+		p.check(.gt) // `>`
+		p.table.register_fn_gen_type(fn_name, generic_type)
 	}
 	p.check(.lpar)
 	args := p.call_args()
@@ -35,8 +43,10 @@ pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 		len: last_pos.pos - first_pos.pos + last_pos.len
 	}
 	mut or_stmts := []ast.Stmt{}
-	mut is_or_block_used := false
 	if p.tok.kind == .key_orelse {
+		// `foo() or {}``
+		was_inside_or_expr := p.inside_or_expr
+		p.inside_or_expr = true
 		p.next()
 		p.open_scope()
 		p.scope.register('err', ast.Var{
@@ -51,21 +61,28 @@ pub fn (mut p Parser) call_expr(is_c, is_js bool, mod string) ast.CallExpr {
 			pos: p.tok.position()
 			is_used: true
 		})
-		is_or_block_used = true
+		or_kind = .block
 		or_stmts = p.parse_block_no_scope()
 		p.close_scope()
+		p.inside_or_expr = was_inside_or_expr
+	}
+	if p.tok.kind == .question {
+		// `foo()?`
+		p.next()
+		or_kind = .propagate
 	}
 	node := ast.CallExpr{
 		name: fn_name
 		args: args
 		mod: p.mod
 		pos: pos
-		is_c: is_c
-		is_js: is_js
+		language: language
 		or_block: ast.OrExpr{
 			stmts: or_stmts
-			is_used: is_or_block_used
+			kind: or_kind
+			pos: pos
 		}
+		generic_type: generic_type
 	}
 	return node
 }
@@ -100,9 +117,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.check(.key_fn)
 	p.open_scope()
 	// C. || JS.
-	is_c := p.tok.kind == .name && p.tok.lit == 'C'
-	is_js := p.tok.kind == .name && p.tok.lit == 'JS'
-	if is_c || is_js {
+	language := if p.tok.kind == .name && p.tok.lit == 'C' {
+		table.Language.c
+	} else if p.tok.kind == .name && p.tok.lit == 'JS' {
+		table.Language.js
+	} else {
+		table.Language.v
+	}
+	if language != .v {
 		p.next()
 		p.check(.dot)
 	}
@@ -124,17 +146,22 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		rec_name = p.check_name()
 		if !rec_mut {
 			rec_mut = p.tok.kind == .key_mut
+			if rec_mut {
+				p.warn_with_pos('use `(mut f Foo)` instead of `(f mut Foo)`', p.tok.position())
+			}
 		}
-        
 		receiver_pos = rec_start_pos.extend(p.tok.position())
 		is_amp := p.tok.kind == .amp
-
 		// if rec_mut {
 		// p.check(.key_mut)
 		// }
 		// TODO: talk to alex, should mut be parsed with the type like this?
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
 		rec_type = p.parse_type_with_mut(rec_mut)
+		sym := p.table.get_type_symbol(rec_type)
+		if sym.mod != p.mod && sym.mod != '' {
+			p.error('cannot define methods on types from other modules (current module is `$p.mod`, `$sym.name` is from `$sym.mod`)')
+		}
 		if is_amp && rec_mut {
 			p.error('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`')
 		}
@@ -148,8 +175,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut name := ''
 	if p.tok.kind == .name {
 		// TODO high order fn
-		name = p.check_name()
-		if !is_js && !is_c && !p.pref.translated && util.contains_capital(name) {
+		name = if language == .js {
+			p.check_js_name()
+		} else {
+			p.check_name()
+		}
+		if language == .v && !p.pref.translated && util.contains_capital(name) {
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
 		}
 		if is_method && p.table.get_type_symbol(rec_type).has_method(name) {
@@ -217,9 +248,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			ctdefine: ctdefine
 		})
 	} else {
-		if is_c {
+		if language == .c {
 			name = 'C.$name'
-		} else if is_js {
+		} else if language == .js {
 			name = 'JS.$name'
 		} else {
 			name = p.prepend_mod(name)
@@ -232,11 +263,11 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			args: args
 			return_type: return_type
 			is_variadic: is_variadic
-			is_c: is_c
-			is_js: is_js
+			language: language
 			is_generic: is_generic
 			is_pub: is_pub
 			ctdefine: ctdefine
+			mod: p.mod
 		})
 	}
 	// Body
@@ -256,6 +287,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		args: args
 		is_deprecated: is_deprecated
 		is_pub: is_pub
+		is_generic: is_generic
 		is_variadic: is_variadic
 		receiver: ast.Field{
 			name: rec_name
@@ -264,8 +296,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		receiver_pos: receiver_pos
 		is_method: is_method
 		rec_mut: rec_mut
-		is_c: is_c
-		is_js: is_js
+		language: language
 		no_body: no_body
 		pos: start_pos.extend(end_pos)
 		body_pos: body_start_pos
@@ -307,7 +338,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	}
 	name := 'anon_${p.tok.pos}_$func.signature()'
 	func.name = name
-	idx := p.table.find_or_register_fn_type(func, true, false)
+	idx := p.table.find_or_register_fn_type(p.mod, func, true, false)
 	typ := table.new_type(idx)
 	// name := p.table.get_type_name(typ)
 	return ast.AnonFn{
@@ -334,6 +365,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 	// `int, int, string` (no names, just types)
 	types_only := p.tok.kind in [.amp, .and] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) ||
 		p.peek_tok.kind == .rpar
+	// TODO copy pasta, merge 2 branches
 	if types_only {
 		// p.warn('types only')
 		mut arg_no := 1
@@ -348,6 +380,13 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 				is_variadic = true
 			}
 			mut arg_type := p.parse_type()
+			if is_mut {
+				// if arg_type.is_ptr() {
+				// p.error('cannot mut')
+				// }
+				// arg_type = arg_type.to_ptr()
+				arg_type = arg_type.set_nr_muls(1)
+			}
 			if is_variadic {
 				arg_type = arg_type.set_flag(.variadic)
 			}
@@ -385,6 +424,13 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 				is_variadic = true
 			}
 			mut typ := p.parse_type()
+			if is_mut {
+				if typ.is_ptr() {
+					// name := p.table.get_type_name(typ)
+					// p.warn('`$name` is already a reference, it cannot be marked as `mut`')
+				}
+				typ = typ.set_nr_muls(1)
+			}
 			if is_variadic {
 				typ = typ.set_flag(.variadic)
 			}
@@ -420,7 +466,8 @@ fn (mut p Parser) fn_redefinition_error(name string) {
 
 	}
 	*/
-	p.error('redefinition of function `$name`')
+	p.table.redefined_fns << name
+	// p.error('redefinition of function `$name`')
 }
 
 fn have_fn_main(stmts []ast.Stmt) bool {

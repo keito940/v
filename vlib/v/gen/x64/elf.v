@@ -29,8 +29,8 @@ const (
 
 const (
 	segment_start = 0x400000
-	PLACEHOLDER   = 0
-	SEVENS        = 0x77777777
+	placeholder   = 0
+	sevens        = 0x77777777
 )
 
 pub fn (mut g Gen) generate_elf_header() {
@@ -74,7 +74,7 @@ pub fn (mut g Gen) generate_elf_header() {
 	println('code_start_pos = $g.buf.len.hex()')
 	g.code_start_pos = g.buf.len
 	g.debug_pos = g.buf.len
-	g.call(PLACEHOLDER) // call main function, it's not guaranteed to be the first, we don't know its address yet
+	g.call(placeholder) // call main function, it's not guaranteed to be the first, we don't know its address yet
 	g.println('call fn main')
 }
 
@@ -90,7 +90,7 @@ pub fn (mut g Gen) generate_elf_footer() {
 	for i, s in g.strings {
 		g.write64_at(segment_start + g.buf.len, int(g.str_pos[i]))
 		g.write_string(s)
-		g.write8(6)
+		g.write8(0)
 	}
 	// Now we know the file size, set it
 	file_size := g.buf.len

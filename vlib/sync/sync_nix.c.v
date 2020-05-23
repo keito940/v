@@ -3,10 +3,7 @@
 // that can be found in the LICENSE file.
 module sync
 
-#include <pthread.h>
-fn C.pthread_mutex_init(voidptr, voidptr) int
-fn C.pthread_mutex_lock(voidptr) int
-fn C.pthread_mutex_unlock(voidptr) int
+#flag -lpthread
 
 // [init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 [ref_only]
@@ -20,11 +17,10 @@ pub fn new_mutex() &Mutex {
 	return m
 }
 
-pub fn (m mut Mutex) lock() {
+pub fn (mut m Mutex) lock() {
 	C.pthread_mutex_lock(&m.mutex)
 }
 
-pub fn (m mut Mutex) unlock() {
+pub fn (mut m Mutex) unlock() {
 	C.pthread_mutex_unlock(&m.mutex)
 }
-

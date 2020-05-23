@@ -15,6 +15,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	p.is_stmt_ident = false
 	// Prefix
 	match p.tok.kind {
+		.key_mut, .key_static {
+			node = p.parse_assign_ident()
+		}
 		.name {
 			node = p.name_expr()
 			p.is_stmt_ident = is_stmt_ident
@@ -76,14 +79,15 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		.key_sizeof {
 			p.next() // sizeof
 			p.check(.lpar)
+			sizeof_type := p.parse_type()
 			if p.tok.lit == 'C' {
 				p.next()
 				p.check(.dot)
 				node = ast.SizeOf{
 					type_name: p.check_name()
+					typ: sizeof_type
 				}
 			} else {
-				sizeof_type := p.parse_type()
 				node = ast.SizeOf{
 					typ: sizeof_type
 				}
@@ -134,7 +138,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	}
 	// Infix
 	for precedence < p.tok.precedence() {
-		if p.tok.kind.is_assign() {
+		if p.tok.kind.is_assign() && !p.is_stmt_ident {
 			node = p.assign_expr(node)
 		} else if p.tok.kind == .dot {
 			node = p.dot_expr(node)
@@ -212,8 +216,16 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	if op == .amp {
 		p.is_amp = true
 	}
+	// if op == .mul && !p.inside_unsafe {
+	// p.warn('unsafe')
+	// }
 	p.next()
-	right := p.expr(token.Precedence.prefix)
+	mut right := ast.Expr{}
+	if op == .minus {
+		right = p.expr(token.Precedence.call)
+	} else {
+		right = p.expr(token.Precedence.prefix)
+	}
 	p.is_amp = false
 	return ast.PrefixExpr{
 		op: op

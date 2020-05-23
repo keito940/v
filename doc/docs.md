@@ -14,6 +14,74 @@ The language promotes writing simple and clear code with minimal abstraction.
 Despite being simple, V gives the developer a lot of power. Anything you can do in other languages,
 you can do in V.
 
+## Table of Contents
+
+<table>
+	<tr>
+		<td width=16%><a href='#hello-world'>1. Hello world</a></td>
+		<td width=16%><a href='#comments'>2. Comments</a></td>
+		<td width=16%><a href='#functions'>3. Functions</a></td>
+		<td width=16%><a href='#variables'>4. Variables</a></td>
+		<td width=16%><a href='#primitive-types'>5. Primitive types</a></td>
+		<td width=16%><a href='#strings'>6. Strings</a></td>
+	</tr>
+	<tr>
+		<td><a href='#imports'>7. Imports</a></td>
+		<td><a href='#arrays'>Arrays</a></td>
+		<td><a href='#maps'>Maps</a></td>
+		<td><a href='#if'>If</a></td>
+		<td><a href='#in-operator'>In Operator</a></td>
+		<td><a href='#for-loop'>For loop</a></td>
+		</tr>
+	<tr>
+		<td><a href='#match'>Match</a></td>
+		<td><a href='#structs'>Structs</a></td>
+		<td><a href='#short-struct-initialization-syntax'>Short struct init syntax</a></td>
+		<td><a href='#access-modifiers'>Access modifiers</a></td>
+		<td><a href='#methods'>Methods</a></td>
+		<td><a href='#pure-functions-by-default'>Pure functions by default</a></td>
+		</tr>
+	<tr>
+		<td><a href='#anonymous--high-order-functions'>Anonymous & high order fns</a></td>
+		<td><a href='#references'>References</a></td>
+		<td><a href='#constants'>Constants</a></td>
+		<td><a href='#println'>println</a></td>
+		<td><a href='#modules'>Modules</a></td>
+		<td><a href='#interfaces'>Interfaces</a></td>
+		</tr>
+	<tr>
+		<td><a href='#enums'>Enums</a></td>
+		<td><a href='#sum-types'>Sum types</a></td>
+		<td><a href='#optionresult-types-and-error-handling'>Option/Result & error handling</a></td>
+		<td><a href='#generics'>Generics</a></td>
+		<td><a href='#concurrency'>Concurrency</a></td>
+		<td><a href='#decoding-json'>Decoding JSON</a></td>
+		</tr>
+	<tr>
+		<td><a href='#testing'>Testing</a></td>
+		<td><a href='#memory-management'>Memory managment</a></td>
+		<td><a href='#defer'>Defer</a></td>
+		<td><a href='#orm'>ORM</a></td>
+		<td><a href='#vfmt'>vfmt</a></td>
+		<td><a href='#writing-documentation'>Writing documentation</a></td>
+		</tr>
+	<tr>
+		<td><a href='#calling-c-functions-from-v'>Calling C functions from V</a></td>
+		<td><a href='#conditional-compilation'>Conditional compilation</a></td>
+		<td><a href='#reflection-via-codegen'>Reflection via codegen</a></td>
+		<td><a href='#limited-operator-overloading'>Limited operator overloading</a></td>
+		<td><a href='#inline-assembly'>Inline assembly</a></td>
+		<td><a href='#translating-cc-to-v'>Translating C/C++ to V</a></td>
+		</tr>
+	<tr>
+		<td><a href='#hot-code-reloading'>Hot code reloading</a></td>
+		<td><a href='#cross-compilation'>Cross compilation</a></td>
+		<td><a href='#cross-platform-shell-scripts-in-v'>Cross-platform shell scripts in V</a></td>
+		<td><a href='#appendix-i-keywords'>Appendix I: Keywords</a></td>
+		<td><a href='#appendix-ii-operators'>Appendix II: Operators</a></td>
+	</tr>
+</table>
+
 
 
 ## Hello World
@@ -94,9 +162,9 @@ println(b) // 3
 ```
 
 Functions can return multiple values.
-Like constants and types, functions are private (not exported) by default.
-To allow other modules to use them, prepend `pub`. The same applies
-to constants and types.
+
+<p>&nbsp;</p>
+
 
 ```v
 pub fn public_function() {
@@ -106,7 +174,13 @@ fn private_function() {
 }
 ```
 
-## Constants & variables
+Like constants and types, functions are private (not exported) by default.
+To allow other modules to use them, prepend `pub`. The same applies
+to constants and types.
+
+
+
+## Variables
 
 ```v
 name := 'Bob'
@@ -129,6 +203,8 @@ type `T`.
 Unlike most other languages, V only allows defining variables in functions.
 Global (module level) variables are not allowed. There's no global state in V.
 
+<p>&nbsp;</p>
+
 ```v
 mut age := 20
 println(age)
@@ -144,6 +220,8 @@ Try compiling the program above after removing `mut` from the first line.
 Note the (important) difference between `:=` and `=`
 `:=` is used for declaring and initializing, `=` is used for assigning.
 
+<p>&nbsp;</p>
+
 ```v
 fn main() {
     age = 21
@@ -153,6 +231,8 @@ fn main() {
 This code will not compile, because the variable `age` is not declared.
 All variables need to be declared in V.
 
+<p>&nbsp;</p>
+
 ```v
 fn main() {
     age := 21
@@ -161,6 +241,8 @@ fn main() {
 
 In development mode the compiler will warn you that you haven't used the variable (you'll get an "unused variable" warning).
 In production mode (enabled by passing the `-prod` flag to v – `v -prod foo.v`) it will not compile at all (like in Go).
+
+<p>&nbsp;</p>
 
 ```v
 fn main() {
@@ -187,8 +269,10 @@ rune // represents a Unicode code point
 
 f32 f64
 
-byteptr
+byteptr // these two are mostly used for C interop
 voidptr
+
+any // similar to C's void* and Go's interface{}
 ```
 
 Please note that unlike C and Go, `int` is always a 32 bit integer.
@@ -270,7 +354,7 @@ fn main() {
 }
 ```
 
-Modules can be imported using keyword `import`. When using types, functions, and constants from other modules, the full path must be specified. In the example above, `name := get_line()` wouldn't work. That means that it's always clear from which module a function is called
+Modules can be imported using keyword `import`. When using types, functions, and constants from other modules, the full path must be specified. In the example above, `name := input()` wouldn't work. That means that it's always clear from which module a function is called.
 
 ## Arrays
 
@@ -298,7 +382,7 @@ names = [] // The array is now empty
 users := []User{}
 
 // We can also preallocate a certain amount of elements.
-ids := []int{ len: 50, default: 0 } // This creates an array with 50 zeros
+ids := []int{ len: 50, init: 0 } // This creates an array with 50 zeros
 ```
 
 The type of an array is determined by the first element: `[1, 2, 3]` is an array of ints (`[]int`).
@@ -539,6 +623,8 @@ p := Point{
 println(p.x) // Struct fields are accessed using a dot
 ```
 
+<p>&nbsp;</p>
+
 Structs are allocated on the stack. To allocate a struct on the heap
 and get a reference to it, use the `&` prefix:
 
@@ -551,6 +637,8 @@ println(p.x)
 
 The type of `p` is `&Point`. It's a reference to `Point`.
 References are similar to Go pointers and C++ references.
+
+<p>&nbsp;</p>
 
 V doesn't allow subclassing, but it supports embedded structs:
 
@@ -567,6 +655,59 @@ button.set_pos(x, y)
 // Without embedding we'd have to do
 button.widget.set_pos(x,y)
 ```
+
+<p>&nbsp;</p>
+
+```v
+struct Foo {
+    n   int      // n is 0 by default
+    s   string   // s is '' by default
+    a   []int    // a is `[]int{}` by default
+    pos int = -1 // custom default value
+}
+```
+
+All struct fields are zeroed by default during the creation of the struct. Array and map fields are allocated.
+
+It's also possible to define custom default values.
+
+
+## Short struct initialization syntax
+
+There are no default function argument values or named arguments, for that the short struct initialization syntax can be used instead:
+
+```v
+struct ButtonConfig {
+    text        string
+    is_disabled bool
+    width       int = 70
+    height      int = 20
+}
+
+fn new_button(c ButtonConfig) &Button {
+    return &Button{
+        width: c.width
+	height: c.height
+	text: c.text
+    }
+}
+
+button := new_button(text:'Click me', width:100) // the height is unset, so it's 20, the default value
+```
+
+As you can see, we can use
+
+```
+new_button(text:'Click me', width:100)
+```
+
+instead of
+
+```
+new_button(ButtonConfig{text:'Click me', width:100})
+```
+
+This only works with functions that have a single struct argument.
 
 ## Access modifiers
 
@@ -610,6 +751,8 @@ fn main() {
     str.len++      // Compilation error
 }
 ```
+
+This means that defining public readonly fields is very easy in V, no need in getters/setters or properties.
 
 ## Methods
 
@@ -817,11 +960,13 @@ println(blue)
 
 Global variables are not allowed, so this can be really useful.
 
+<!--
 When naming constants, snake_case must be used.
 Many people prefer all caps consts: `TOP_CITIES`. This wouldn't work
 well in V, because consts are a lot more powerful than in other languages.
 They can represent complex structures, and this is used quite often since there
 are no globals:
+-->
 
 ```v
 println('Top cities: $TOP_CITIES.filter(.usa)')
@@ -924,6 +1069,11 @@ interface Speaker {
 }
 
 fn perform(s Speaker) string {
+    if s is Dog { // use `is` to check the underlying type of an interface
+        println('perform(dog)')
+    } else if s is Cat {
+        println('perform(cat)')
+    }
     return s.speak()
 }
 
@@ -963,7 +1113,7 @@ struct CallExpr {
 	...
 }
 
-fn (p mut Parser) expr(precedence int) ast.Expr {
+fn (p mut Parser) expr(precedence int) Expr {
 	match p.tok {
 		.key_if { return IfExpr{} }
 		...
@@ -973,7 +1123,7 @@ fn (p mut Parser) expr(precedence int) ast.Expr {
 
 fn gen(expr Expr) {
 	match expr {
-		.key_if { gen_if(it) }
+		IfExpr { gen_if(it) }
 		...
 	}
 }
@@ -1051,7 +1201,7 @@ You can also propagate errors:
 
 ```v
 resp := http.get(url)?
-println(resp.body)
+println(resp.text)
 ```
 
 `http.get` returns `?http.Response`. Because it was called with `?`, the error will be propagated to the calling function
@@ -1063,7 +1213,7 @@ The code above is essentially a condensed version of
 resp := http.get(url) or {
     return error(err)
 }
-println(resp.body)
+println(resp.text)
 ```
 
 V does not have a way to forcibly "unwrap" an optional (as other languages do, for instance Rust's `unwrap()`
@@ -1411,7 +1561,7 @@ and tries to compile it to a .o file, then will use that.
 
 This allows you to have C code, that is contained in a V module, so that its distribution is easier.
 You can see a complete example for using C code in a V wrapper module here:
-[minimal V project, that has a module, which contains C code](https://github.com/vlang/v/tree/master/vlib/compiler/tests/project_with_c_code)
+[minimal V project, that has a module, which contains C code](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code)
 
 You can use `-cflags` to pass custom flags to the backend C compiler. You can also use `-cc` to change the default C backend compiler.
 For example: `-cc gcc-9 -cflags -fsanitize=thread`.

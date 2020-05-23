@@ -92,7 +92,7 @@ pub mut:
 	vvlocation string // v.v or compiler/ or cmd/v, depending on v version
 }
 
-pub fn (vgit_context mut VGitContext) compile_oldv_if_needed() {
+pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	vgit_context.vexename = if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	vgit_context.vexepath = os.real_path(os.join_path(vgit_context.path_v, vgit_context.vexename))
 	mut command_for_building_v_from_c_source := ''
@@ -102,7 +102,7 @@ pub fn (vgit_context mut VGitContext) compile_oldv_if_needed() {
 		command_for_selfbuilding = './cv.exe -o $vgit_context.vexename {SOURCE}'
 	}
 	else {
-		command_for_building_v_from_c_source = '$vgit_context.cc -std=gnu11 -w -o cv "$vgit_context.path_vc/v.c"  -lm'
+		command_for_building_v_from_c_source = '$vgit_context.cc -std=gnu11 -w -o cv "$vgit_context.path_vc/v.c"  -lm -lpthread'
 		command_for_selfbuilding = './cv -o $vgit_context.vexename {SOURCE}'
 	}
 	scripting.chdir(vgit_context.workdir)
@@ -134,7 +134,7 @@ pub fn (vgit_context mut VGitContext) compile_oldv_if_needed() {
 }
 
 pub struct VGitOptions {
-mut:
+pub mut:
 	workdir       string // the working folder (typically /tmp), where the tool will write
 	v_repo_url    string // the url of the V repository. It can be a local folder path, if you want to eliminate network operations...
 	vc_repo_url   string // the url of the vc repository. It can be a local folder path, if you want to eliminate network operations...
