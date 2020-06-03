@@ -100,7 +100,7 @@ pub fn new_context(cfg Cfg) &GG {
 	shader := gl.new_shader('simple')
 	shader.use()
 	if cfg.use_ortho {
-		projection := glm.ortho(0, cfg.width, cfg.height, 0)
+		projection := glm.ortho(0, f32(cfg.width), f32(cfg.height), 0)
 		shader.set_mat4('projection', projection)
 	}
 	else {
@@ -304,7 +304,7 @@ fn todo_remove_me(cfg Cfg, scale int) {
 	//# glBlendFunc(C.GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	shader := gl.new_shader('text')
 	shader.use()
-	projection := glm.ortho(0, width, 0, height)// 0 at BOT
+	projection := glm.ortho(0, f32(width), 0, f32(height))// 0 at BOT
 	// projection_new := ortho(0, width, 0, height)// 0 at BOT
 	// projection := gl.ortho(0, width,height,0)  // 0 at TOP
 	shader.set_mat4('projection', projection)
@@ -480,7 +480,7 @@ pub fn (ctx &GG) draw_empty_rounded_rect(x, y, w, h, r f32, color gx.Color) {
 
 /*
 pub fn (c &GG) draw_gray_line(x, y, x2, y2 f32) {
-	c.draw_line(x, y, x2, y2, gx.Gray)
+	c.draw_line(x, y, x2, y2, gx.gray)
 }
 
 pub fn (c &GG) draw_vertical(x, y, height int) {

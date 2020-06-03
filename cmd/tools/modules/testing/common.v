@@ -50,7 +50,7 @@ pub fn new_test_session(_vargs string) TestSession {
 		skip_files: skip_files
 		vargs: vargs
 		show_ok_tests: !_vargs.contains('-silent')
-		message_handler: 0
+		message_handler: &TestMessageHandler(0)
 	}
 }
 
@@ -233,6 +233,10 @@ pub fn v_build_failing_skipped(zargs string, folder string, skipped []string) bo
 	mut mains := []string{}
 	for f in files {
 		if !f.contains('modules') && !f.contains('preludes') {
+			if f.contains('/vweb/') || f.contains('/pg/') || f.contains('rune.v') || f.contains('/pico') {
+				continue
+
+			}
 			$if windows {
 				// skip pico example on windows
 				if f.ends_with('examples\\pico\\pico.v') {

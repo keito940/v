@@ -93,6 +93,33 @@ fn foo_str() ?string {
 	return 'something'
 }
 
+fn propagate_optional(b bool) ?int {
+	a := err_call(b)?
+	return a
+}
+
+fn propagate_different_type(b bool) ?bool {
+	err_call(b)?
+	return true
+}
+
+fn test_propagation() {
+	a := propagate_optional(true) or {
+		0
+	}
+	assert a == 42
+	if _ := propagate_optional(false) {
+		assert false
+	}
+	b := propagate_different_type(true) or {
+		false
+	}
+	assert b == true
+	if _ := propagate_different_type(false) {
+		assert false
+	}
+}
+
 fn test_q() {
 	// assert foo_ok()? == true
 }
@@ -186,6 +213,13 @@ mut:
 	opt ?int
 }
 
+struct Thing2 {
+mut:
+	opt ?Thing
+}
+
+
+
 fn test_opt_field() {
 	/*
 	QTODO
@@ -240,7 +274,7 @@ fn test_multi_return_opt() {
 	}
 }
 */
-fn foo() ?void {
+fn foo() ? {
 	return error('something')
 }
 

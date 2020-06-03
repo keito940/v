@@ -225,3 +225,35 @@ fn test_interface_ptr_array() {
 	assert true
 	assert animals.len == 3
 }
+
+fn test_is() {
+	dog := Dog{}
+	assert foo2(dog) == 1
+}
+
+fn foo2(a Animal) int {
+	if a is Dog {
+		return 1
+	} else {
+		return 0
+	}
+}
+
+fn new_animal() Animal {
+	dog := Dog{}
+	return dog
+}
+
+fn new_animal2() Animal {
+	return new_animal()
+}
+
+/*
+fn animal_match(a Animal) {
+	match a {
+		Dog { println('(dog)') }
+		Cat { println('(cat)') }
+		else {}
+	}
+}
+*/

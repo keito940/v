@@ -144,6 +144,11 @@ pub fn (nn u32) str() string {
 	//return tos(buf + index, (max-index))
 }
 
+[inline]
+pub fn (n any_int) str() string {
+	return i64(n).str()
+}
+
 pub fn (nn i64) str() string {
 	mut n := nn
 	mut d := i64(0)
@@ -188,7 +193,7 @@ pub fn (nn i64) str() string {
 
 pub fn (nn u64) str() string {
 	mut n := nn
-	mut d := 0
+	mut d := u64(0)
 	if n == 0 {
 		return '0'
 	}
@@ -274,7 +279,7 @@ pub fn (nn u16) hex() string {
 	mut index := max
 	buf[index--] = `\0`
 	for n > 0 {
-		d := n & 0xF
+		d := byte(n & 0xF)
 		n = n >> 4
 		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
 	}
@@ -301,7 +306,7 @@ pub fn (nn u32) hex() string {
 	mut index := max
 	buf[index--] = `\0`
 	for n > 0 {
-		d := n & 0xF
+		d := byte(n & 0xF)
 		n = n >> 4
 		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
 	}
@@ -328,7 +333,7 @@ pub fn (nn u64) hex() string {
 	mut index := max
 	buf[index--] = `\0`
 	for n > 0 {
-		d := n & 0xF
+		d := byte(n & 0xF)
 		n = n >> 4
 		buf[index--] = if d < 10 { d + `0` } else { d + 87 }
 	}
@@ -345,6 +350,10 @@ pub fn (nn i64) hex() string {
 	return u64(nn).hex()
 }
 
+pub fn (nn any_int) hex() string {
+	return u64(nn).hex()
+}
+
 pub fn (nn voidptr) str() string {
 	return u64(nn).hex()
 }
@@ -354,16 +363,6 @@ pub fn (nn byteptr) str() string {
 }
 
 // ----- utilities functions -----
-
-pub fn (a []byte) contains(val byte) bool {
-	for aa in a {
-		if aa == val {
-			return true
-		}
-	}
-	return false
-}
-
 
 /*
 pub fn (c rune) str() string {
@@ -404,3 +403,33 @@ pub fn (b []byte) clone() []byte {
 	return res
 }
 
+
+// TODO generic
+pub fn (a []byte) contains(val byte) bool {
+	for aa in a {
+		if aa == val {
+			return true
+		}
+	}
+	return false
+}
+
+// TODO generic
+fn (ar []int) contains(val int) bool {
+	for s in ar {
+		if s == val {
+			return true
+		}
+	}
+	return false
+}
+
+// TODO generic
+pub fn (a []u64) contains(val u64) bool {
+	for aa in a {
+		if aa == val {
+			return true
+		}
+	}
+	return false
+}

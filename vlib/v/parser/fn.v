@@ -19,19 +19,24 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	} else {
 		p.check_name()
 	}
-	mut is_or_block_used := false
+	mut or_kind := ast.OrKind.absent
 	if fn_name == 'json.decode' {
 		p.expecting_type = true // Makes name_expr() parse the type `User` in `json.decode(User, txt)`
 		p.expr_mod = ''
-		is_or_block_used = true
+		or_kind = .block
 	}
 	mut generic_type := table.void_type
 	if p.tok.kind == .lt {
 		// `foo<int>(10)`
 		p.next() // `<`
-		generic_type = p.parse_type()
+		p.expr_mod = ''
+		mut generic_type = p.parse_type()
 		p.check(.gt) // `>`
-		p.table.register_fn_gen_type(fn_name, generic_type)
+		// In case of `foo<T>()`
+		// T is unwrapped and registered in the checker.
+		if generic_type != table.t_type {
+			p.table.register_fn_gen_type(fn_name, generic_type)
+		}
 	}
 	p.check(.lpar)
 	args := p.call_args()
@@ -42,9 +47,9 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		pos: first_pos.pos
 		len: last_pos.pos - first_pos.pos + last_pos.len
 	}
-	// `foo() or {}``
 	mut or_stmts := []ast.Stmt{}
 	if p.tok.kind == .key_orelse {
+		// `foo() or {}``
 		was_inside_or_expr := p.inside_or_expr
 		p.inside_or_expr = true
 		p.next()
@@ -61,7 +66,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 			pos: p.tok.position()
 			is_used: true
 		})
-		is_or_block_used = true
+		or_kind = .block
 		or_stmts = p.parse_block_no_scope()
 		p.close_scope()
 		p.inside_or_expr = was_inside_or_expr
@@ -69,10 +74,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	if p.tok.kind == .question {
 		// `foo()?`
 		p.next()
-		is_or_block_used = true
-		// mut s := ast.Stmt{}
-		// s = ast.ReturnStmt{}
-		or_stmts << ast.Return{}
+		or_kind = .propagate
 	}
 	node := ast.CallExpr{
 		name: fn_name
@@ -82,7 +84,8 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		language: language
 		or_block: ast.OrExpr{
 			stmts: or_stmts
-			is_used: is_or_block_used
+			kind: or_kind
+			pos: pos
 		}
 		generic_type: generic_type
 	}
@@ -160,10 +163,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// TODO: talk to alex, should mut be parsed with the type like this?
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
 		rec_type = p.parse_type_with_mut(rec_mut)
-		sym := p.table.get_type_symbol(rec_type)
-		if sym.mod != p.mod && sym.mod != '' {
-			p.error('cannot define methods on types from other modules (current module is `$p.mod`, `$sym.name` is from `$sym.mod`)')
-		}
 		if is_amp && rec_mut {
 			p.error('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`')
 		}
@@ -205,7 +204,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	args << args2
 	for i, arg in args {
 		if p.scope.known_var(arg.name) {
-			p.error('redefinition of parameter `$arg.name`')
+			p.error_with_pos('redefinition of parameter `$arg.name`', arg.pos)
 		}
 		p.scope.register(arg.name, ast.Var{
 			name: arg.name
@@ -222,9 +221,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				continue
 			}
 			sym := p.table.get_type_symbol(arg.typ)
-			if sym.kind !in [.array, .struct_, .map, .placeholder] && !arg.typ.is_ptr() {
-				p.error('mutable arguments are only allowed for arrays, maps, and structs\n' +
-					'return values instead: `fn foo(n mut int) {` => `fn foo(n int) int {`')
+			// if sym.kind !in [.array, .struct_, .map, .placeholder] && arg.typ != table.t_type &&				!arg.typ.is_ptr() {
+			if sym.kind !in [.array, .struct_, .map, .placeholder] && arg.typ != table.t_type {
+				p.error_with_pos('mutable arguments are only allowed for arrays, maps, and structs\n' +
+					'return values instead: `fn foo(n mut int) {` => `fn foo(n int) int {`', arg.pos)
 			}
 		}
 	}
@@ -360,6 +360,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	}
 }
 
+// fn decl
 fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 	p.check(.lpar)
 	mut args := []table.Arg{}
@@ -381,8 +382,9 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 				p.next()
 				is_variadic = true
 			}
+			pos := p.tok.position()
 			mut arg_type := p.parse_type()
-			if is_mut {
+			if is_mut && arg_type != table.t_type {
 				// if arg_type.is_ptr() {
 				// p.error('cannot mut')
 				// }
@@ -394,11 +396,13 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			}
 			if p.tok.kind == .comma {
 				if is_variadic {
-					p.error('cannot use ...(variadic) with non-final parameter no $arg_no')
+					p.error_with_pos('cannot use ...(variadic) with non-final parameter no $arg_no',
+						pos)
 				}
 				p.next()
 			}
 			args << table.Arg{
+				pos: pos
 				name: arg_name
 				is_mut: is_mut
 				typ: arg_type
@@ -411,10 +415,12 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			if is_mut {
 				p.next()
 			}
+			mut arg_pos := [p.tok.position()]
 			mut arg_names := [p.check_name()]
 			// `a, b, c int`
 			for p.tok.kind == .comma {
 				p.next()
+				arg_pos << p.tok.position()
 				arg_names << p.check_name()
 			}
 			if p.tok.kind == .key_mut {
@@ -426,7 +432,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 				is_variadic = true
 			}
 			mut typ := p.parse_type()
-			if is_mut {
+			if is_mut && typ != table.t_type {
 				if typ.is_ptr() {
 					// name := p.table.get_type_name(typ)
 					// p.warn('`$name` is already a reference, it cannot be marked as `mut`')
@@ -436,15 +442,17 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			if is_variadic {
 				typ = typ.set_flag(.variadic)
 			}
-			for arg_name in arg_names {
+			for i, arg_name in arg_names {
 				args << table.Arg{
+					pos: arg_pos[i]
 					name: arg_name
 					is_mut: is_mut
 					typ: typ
 				}
 				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
 				if is_variadic && p.tok.kind == .comma {
-					p.error('cannot use ...(variadic) with non-final parameter $arg_name')
+					p.error_with_pos('cannot use ...(variadic) with non-final parameter $arg_name',
+						arg_pos[i])
 				}
 			}
 			if p.tok.kind != .rpar {

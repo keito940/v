@@ -2,8 +2,9 @@ module pref
 
 import os
 
-pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files []string) []string {
+pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []string) []string {
 	mut res := []string{}
+	mut files := files_.clone()
 	files.sort()
 	for file in files {
 		if !file.ends_with('.v') && !file.ends_with('.vh') {
@@ -57,6 +58,15 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 		return false
 	}
 	if file.ends_with('_freebsd.c.v') && prefs.os != .freebsd {
+		return false
+	}
+	if file.ends_with('_openbsd.c.v') && prefs.os != .openbsd {
+		return false
+	}
+	if file.ends_with('_netbsd.c.v') && prefs.os != .netbsd {
+		return false
+	}
+	if file.ends_with('_dragonfly.c.v') && prefs.os != .dragonfly {
 		return false
 	}
 	if file.ends_with('_solaris.c.v') && prefs.os != .solaris {

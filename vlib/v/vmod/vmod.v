@@ -33,6 +33,7 @@ pub:
 	vmod_folder string
 }
 
+[ref_only]
 pub struct ModFileCacher {
 mut:
 	cache map[string]ModFileAndFolder
@@ -58,7 +59,13 @@ pub fn (mcache &ModFileCacher) dump() {
 	}
 }
 
-pub fn (mut mcache ModFileCacher) get(mfolder string) ModFileAndFolder {
+
+pub fn (mut mcache ModFileCacher) get_by_file(vfile string) ModFileAndFolder {
+	return mcache.get_by_folder( os.dir( vfile ) )
+}
+
+pub fn (mut mcache ModFileCacher) get_by_folder(vfolder string) ModFileAndFolder {
+	mfolder := os.real_path( vfolder )
 	if mfolder in mcache.cache {
 		return mcache.cache[ mfolder ]
 	}
@@ -125,9 +132,9 @@ fn (mut mcache ModFileCacher) mark_folders_as_vmod_free( folders_so_far []string
 	}
 }
 
-const ( MOD_FILE_STOP_PATHS = ['.git', '.hg', '.svn', '.v.mod.stop' ] )
+const ( mod_file_stop_paths = ['.git', '.hg', '.svn', '.v.mod.stop' ] )
 fn (mcache &ModFileCacher) check_for_stop(cfolder string, files []string) bool {
-	for i in MOD_FILE_STOP_PATHS {
+	for i in mod_file_stop_paths {
 		if i in files {
 			return true
 		}
@@ -149,6 +156,8 @@ fn (mut mcache ModFileCacher) get_files(cfolder string) []string {
 	return files
 }
 
-pub const (
-	mod_file_cacher = new_mod_file_cacher() // used during lookup for v.mod to support @VROOT
-)
+// used during lookup for v.mod to support @VROOT
+const ( private_file_cacher = new_mod_file_cacher() )
+pub fn get_cache() &ModFileCacher {
+	return private_file_cacher
+}
