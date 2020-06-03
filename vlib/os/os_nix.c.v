@@ -8,6 +8,7 @@ import strings
 
 pub const (
 	path_separator = '/'
+	path_delimiter = ':'
 )
 
 const (
@@ -152,4 +153,8 @@ pub fn (mut f File) close() {
   */
 	C.fflush(f.cfile)
 	C.fclose(f.cfile)
+}
+
+pub fn debugger_present() bool {
+	return false
 }

@@ -44,12 +44,14 @@ fn panic_debug(line_no int, file, mod, fn_name, s string) {
 	eprintln('     line: ' + line_no.str())
 	eprintln('=========================================')
 	print_backtrace_skipping_top_frames(1)
+	break_if_debugger_attached()
 	C.exit(1)
 }
 
 pub fn panic(s string) {
 	eprintln('V panic: $s')
 	print_backtrace()
+	break_if_debugger_attached()
 	C.exit(1)
 }
 
@@ -158,7 +160,16 @@ TODO
 	print_backtrace()
 #endif
 */
+}
 
+[unsafe_fn]
+pub fn v_realloc(b byteptr, n int) byteptr {
+	ptr := C.realloc(b, n)
+	if ptr == 0 {
+		panic('realloc($n) failed')
+	}
+
+	return ptr
 }
 
 pub fn v_calloc(n int) byteptr {
@@ -208,4 +219,26 @@ fn __as_cast(obj voidptr, obj_type, expected_type int) voidptr {
 		panic('as cast: cannot cast $obj_type to $expected_type')
 	}
 	return obj
+}
+
+// VAssertMetaInfo is used during assertions. An instance of it
+// is filled in by compile time generated code, when an assertion fails.
+struct VAssertMetaInfo {
+pub:
+	fpath   string // the source file path of the assertion
+	line_nr int    // the line number of the assertion
+	fn_name string // the function name in which the assertion is
+	src     string // the actual source line of the assertion
+	op      string // the operation of the assertion, i.e. '==', '<', 'call', etc ...
+	llabel  string // the left side of the infix expressions as source
+	rlabel  string // the right side of the infix expressions as source
+	lvalue  string // the stringified *actual value* of the left side of a failed assertion
+	rvalue  string // the stringified *actual value* of the right side of a failed assertion
+}
+fn __print_assert_failure(i &VAssertMetaInfo) {
+	eprintln('${i.fpath}:${i.line_nr+1}: FAIL: fn ${i.fn_name}: assert ${i.src}')
+	if i.op != 'call' {
+		eprintln('   left value: ${i.llabel} = ${i.lvalue}')
+		eprintln('  right value: ${i.rlabel} = ${i.rvalue}')
+	}
 }

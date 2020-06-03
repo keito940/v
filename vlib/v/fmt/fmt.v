@@ -8,29 +8,32 @@ import v.table
 import strings
 
 const (
-	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
+	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
+		'\t\t\t\t\t\t\t\t'
+	]
 	max_len = 90
 )
 
 pub struct Fmt {
 pub:
-	out            strings.Builder
-	out_imports    strings.Builder
-	table          &table.Table
+	table             &table.Table
 pub mut:
-	indent         int
-	empty_line     bool
-	line_len       int
-	single_line_if bool
-	cur_mod        string
-	file           ast.File
-	did_imports    bool
-	is_assign      bool
-	auto_imports   []string // automatically inserted imports that the user forgot to specify
-	import_pos     int // position of the imports in the resulting string for later autoimports insertion
-	used_imports   []string // to remove unused imports
-	is_debug       bool
-	mod2alias      map[string]string // for `import time as t`, will contain: 'time'=>'t'
+	out_imports       strings.Builder
+	out               strings.Builder
+	indent            int
+	empty_line        bool
+	line_len          int
+	single_line_if    bool
+	cur_mod           string
+	file              ast.File
+	did_imports       bool
+	is_assign         bool
+	auto_imports      []string // automatically inserted imports that the user forgot to specify
+	import_pos        int // position of the imports in the resulting string for later autoimports insertion
+	used_imports      []string // to remove unused imports
+	is_debug          bool
+	mod2alias         map[string]string // for `import time as t`, will contain: 'time'=>'t'
+	use_short_fn_args bool
 }
 
 pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
@@ -44,7 +47,7 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 	}
 	for imp in file.imports {
 		f.mod2alias[imp.mod.all_after_last('.')] = imp.alias
-	}        
+	}
 	f.cur_mod = 'main'
 	for stmt in file.stmts {
 		if stmt is ast.Import {
@@ -381,7 +384,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			f.write('type $fn_name = fn (')
 			for i, arg in fn_info.args {
 				f.write(arg.name)
-				mut s := f.table.type_to_str(arg.typ)
+				mut s := f.table.type_to_str(arg.typ).replace(f.cur_mod + '.', '')
 				if arg.is_mut {
 					f.write('mut ')
 					if s.starts_with('&') {
@@ -404,7 +407,8 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			}
 			f.write(')')
 			if fn_info.return_type.idx() != table.void_type_idx {
-				ret_str := f.table.type_to_str(fn_info.return_type)
+				ret_str := f.table.type_to_str(fn_info.return_type).replace(f.cur_mod + '.',
+					'')
 				f.write(' ' + ret_str)
 			}
 		}
@@ -435,8 +439,10 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	if node.is_pub {
 		f.write('pub ')
 	}
+	f.write('struct ')
+	f.write_language_prefix(node.language)
 	name := node.name.after('.')
-	f.writeln('struct $name {')
+	f.writeln('$name {')
 	mut max := 0
 	for field in node.fields {
 		if field.name.len > max {
@@ -459,9 +465,12 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		f.write('\t$field.name ')
 		f.write(strings.repeat(` `, max - field.name.len))
 		f.write(f.type_to_str(field.typ))
+		if field.attrs.len > 0 {
+			f.write(' [' + field.attrs.join(';') + ']')
+		}
 		if field.has_default_expr {
 			f.write(' = ')
-			f.expr(field.default_expr)
+			f.struct_field_expr( field.default_expr )
 		}
 		// f.write('// $field.pos.line_nr')
 		if field.comment.text != '' && field.comment.pos.line_nr == field.pos.line_nr {
@@ -478,6 +487,23 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	f.writeln('}\n')
 }
 
+
+pub fn (mut f Fmt) struct_field_expr(fexpr ast.Expr) {
+	mut is_pe_amp_ce := false
+	mut ce := ast.CastExpr{}
+	if fexpr is ast.PrefixExpr {
+		pe := fexpr as ast.PrefixExpr
+		if pe.right is ast.CastExpr && pe.op == .amp {
+			ce = pe.right as ast.CastExpr
+			is_pe_amp_ce = true
+			f.expr(ce)
+		}
+	}
+	if !is_pe_amp_ce {
+		f.expr(fexpr)
+	}
+}
+
 fn (f &Fmt) type_to_str(t table.Type) string {
 	mut res := f.table.type_to_str(t)
 	if res.ends_with('_ptr') {
@@ -485,6 +511,15 @@ fn (f &Fmt) type_to_str(t table.Type) string {
 		res = res[0..res.len - 4]
 		start_pos := 2 * res.count('[]')
 		res = res[0..start_pos] + '&' + res[start_pos..res.len]
+	}
+	if res.starts_with('[]fixed_') {
+		prefix := '[]fixed_'
+		res = res[prefix.len..]
+		last_underscore_idx := res.last_index('_') or {
+			return '[]' + res.replace(f.cur_mod + '.', '')
+		}
+		limit := res[last_underscore_idx + 1..]
+		res = '[' + limit + ']' + res[..last_underscore_idx]
 	}
 	return res.replace(f.cur_mod + '.', '')
 }
@@ -537,6 +572,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.CharLiteral {
 			f.write('`$it.val`')
 		}
+		ast.ComptimeCall {}
 		ast.ConcatExpr {
 			for i, val in it.vals {
 				if i != 0 {
@@ -556,6 +592,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.if_expr(it)
 		}
 		ast.Ident {
+			f.write_language_prefix(it.language)
 			if it.kind == .blank_ident {
 				f.write('_')
 			} else {
@@ -588,18 +625,20 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.MapInit {
 			if it.keys.len == 0 {
-				if it.value_type == 0 {
+				mut ktyp := it.key_type
+				mut vtyp := it.value_type
+				if vtyp == 0 {
 					typ_sym := f.table.get_type_symbol(it.typ)
 					minfo := typ_sym.info as table.Map
-					mk := f.table.get_type_symbol(minfo.key_type).name
-					mv := f.table.get_type_symbol(minfo.value_type).name
-					f.write('map[${mk}]${mv}{}')
-					return
+					ktyp = minfo.key_type
+					vtyp = minfo.value_type
 				}
+
 				f.write('map[')
-				f.write(f.type_to_str(it.key_type))
+				f.write(f.type_to_str(ktyp))
 				f.write(']')
-				f.write(f.type_to_str(it.value_type))
+				f.write(f.type_to_str(vtyp))
+				f.write('{}')
 				return
 			}
 			f.writeln('{')
@@ -658,6 +697,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(')')
 		}
 		ast.StringLiteral {
+			if it.is_raw {
+				f.write('r')
+			}
 			if it.val.contains("'") && !it.val.contains('"') {
 				f.write('"$it.val"')
 			} else {
@@ -838,6 +880,15 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 }
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
+	/*
+	if node.args.len == 1 && node.expected_arg_types.len == 1 && node.args[0].expr is ast.StructInit &&
+		node.args[0].typ == node.expected_arg_types[0] {
+		// struct_init := node.args[0].expr as ast.StructInit
+		// if struct_init.typ == node.args[0].typ {
+		f.use_short_fn_args = true
+		// }
+	}
+	*/
 	if node.is_method {
 		if node.left is ast.Ident {
 			it := node.left as ast.Ident
@@ -863,6 +914,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.write(')')
 		f.or_expr(node.or_block)
 	} else {
+		f.write_language_prefix(node.language)
 		name := f.short_module(node.name)
 		f.mark_module_as_used(name)
 		f.write('${name}')
@@ -876,6 +928,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.write(')')
 		f.or_expr(node.or_block)
 	}
+	f.use_short_fn_args = false
 }
 
 pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
@@ -976,6 +1029,18 @@ pub fn (mut f Fmt) mark_module_as_used(name string) {
 	}
 	f.used_imports << mod
 	// println('marking module $mod as used')
+}
+
+fn (mut f Fmt) write_language_prefix(lang table.Language) {
+	match lang {
+		.c {
+			f.write('C.')
+		}
+		.js {
+			f.write('JS.')
+		}
+		else {}
+	}
 }
 
 fn expr_is_single_line(expr ast.Expr) bool {
@@ -1094,22 +1159,28 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		f.write('$name{')
 		// }
 		for i, field in it.fields {
-			f.expr(field.expr)
+			f.struct_field_expr(field.expr)
 			if i < it.fields.len - 1 {
 				f.write(', ')
 			}
 		}
 		f.write('}')
 	} else {
-		f.writeln('$name{')
+		if f.use_short_fn_args {
+			f.writeln('')
+		} else {
+			f.writeln('$name{')
+		}
 		f.indent++
 		for field in it.fields {
 			f.write('$field.name: ')
-			f.expr(field.expr)
+			f.struct_field_expr(field.expr)
 			f.writeln('')
 		}
 		f.indent--
-		f.write('}')
+		if !f.use_short_fn_args {
+			f.write('}')
+		}
 	}
 }
 

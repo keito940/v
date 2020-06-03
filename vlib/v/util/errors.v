@@ -151,7 +151,7 @@ pub fn verror(kind, s string) {
 }
 
 pub fn find_working_diff_command() ?string {
-	for diffcmd in ['colordiff', 'diff', 'colordiff.exe', 'diff.exe'] {
+	for diffcmd in ['colordiff', 'gdiff', 'diff', 'colordiff.exe', 'diff.exe'] {
 		p := os.exec('$diffcmd --version') or {
 			continue
 		}
@@ -174,7 +174,7 @@ pub fn color_compare_files(diff_cmd, file1, file2 string) string {
     return ''
 }
 
-fn color_compare_strings(diff_cmd string, expected string, found string) string {
+pub fn color_compare_strings(diff_cmd string, expected string, found string) string {
 	cdir := os.cache_dir()
 	ctime := time.sys_mono_now()
 	e_file := os.join_path(cdir, '${ctime}.expected.txt')

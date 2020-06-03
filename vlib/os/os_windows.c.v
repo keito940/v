@@ -7,6 +7,7 @@ import strings
 
 pub const (
 	path_separator = '\\'
+	path_delimiter = ';'
 )
 
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
@@ -145,7 +146,7 @@ pub fn mkdir(path string) ?bool {
 // get_file_handle retrieves the operating-system file handle that is associated with the specified file descriptor.
 pub fn get_file_handle(path string) HANDLE {
     cfile := vfopen(path, 'rb')
-    if cfile == 0 {
+    if cfile == voidptr(0) {
 	    return HANDLE(invalid_handle_value)
     }
     handle := HANDLE(C._get_osfhandle(fileno(cfile))) // CreateFile? - hah, no -_-
@@ -309,4 +310,46 @@ pub fn (mut f File) close() {
 	f.opened = false
 	C.fflush(f.cfile)
 	C.fclose(f.cfile)
+}
+
+pub struct ExceptionRecord {
+pub:
+	// status_ constants
+	code u32
+	flags u32
+	
+	record &ExceptionRecord
+	address voidptr
+	param_count u32
+	// params []voidptr
+}
+
+pub struct ContextRecord {
+	// TODO
+}
+
+pub struct ExceptionPointers {
+pub:
+	exception_record &ExceptionRecord
+	context_record &ContextRecord
+}
+
+pub type VectoredExceptionHandler fn(&ExceptionPointers)u32
+
+// This is defined in builtin because we use vectored exception handling
+// for our unhandled exception handler on windows
+
+// As a result this definition is commented out to prevent
+// duplicate definitions from displeasing the compiler
+// fn C.AddVectoredExceptionHandler(u32, VectoredExceptionHandler)
+
+pub fn add_vectored_exception_handler(first bool, handler VectoredExceptionHandler) {
+	C.AddVectoredExceptionHandler(u32(first), handler)
+}
+
+// this is defined in builtin_windows.c.v in builtin
+// fn C.IsDebuggerPresent() bool
+
+pub fn debugger_present() bool {
+	return C.IsDebuggerPresent()
 }

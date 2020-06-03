@@ -33,6 +33,7 @@ pub:
 	vmod_folder string
 }
 
+[ref_only]
 pub struct ModFileCacher {
 mut:
 	cache map[string]ModFileAndFolder
@@ -58,7 +59,13 @@ pub fn (mcache &ModFileCacher) dump() {
 	}
 }
 
-pub fn (mut mcache ModFileCacher) get(mfolder string) ModFileAndFolder {
+
+pub fn (mut mcache ModFileCacher) get_by_file(vfile string) ModFileAndFolder {
+	return mcache.get_by_folder( os.dir( vfile ) )
+}
+
+pub fn (mut mcache ModFileCacher) get_by_folder(vfolder string) ModFileAndFolder {
+	mfolder := os.real_path( vfolder )
 	if mfolder in mcache.cache {
 		return mcache.cache[ mfolder ]
 	}
@@ -149,6 +156,8 @@ fn (mut mcache ModFileCacher) get_files(cfolder string) []string {
 	return files
 }
 
-pub const (
-	mod_file_cacher = new_mod_file_cacher() // used during lookup for v.mod to support @VROOT
-)
+// used during lookup for v.mod to support @VROOT
+const ( private_file_cacher = new_mod_file_cacher() )
+pub fn get_cache() &ModFileCacher {
+	return private_file_cacher
+}

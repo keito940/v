@@ -156,7 +156,7 @@ pub fn (s string) replace_once(rep, with string) string {
 
 pub fn (s string) replace(rep, with string) string {
 	if s.len == 0 || rep.len == 0 {
-		return s
+		return s.clone()
 	}
 	// TODO PERF Allocating ints is expensive. Should be a stack array
 	// Get locations of all reps within this string
@@ -172,7 +172,7 @@ pub fn (s string) replace(rep, with string) string {
 	}
 	// Dont change the string if there's nothing to replace
 	if idxs.len == 0 {
-		return s
+		return s.clone()
 	}
 	// Now we know the number of replacements we need to do and we can calc the len of the new string
 	new_len := s.len + idxs.len * (with.len - rep.len)
@@ -750,7 +750,7 @@ pub fn (s string) ends_with(p string) bool {
 pub fn (s string) to_lower() string {
 	mut b := malloc(s.len + 1)
 	for i in 0..s.len {
-		b[i] = C.tolower(s.str[i])
+		b[i] = byte(C.tolower(s.str[i]))
 	}
 	return tos(b, s.len)
 }
@@ -767,7 +767,7 @@ pub fn (s string) is_lower() bool {
 pub fn (s string) to_upper() string {
 	mut b := malloc(s.len + 1)
 	for i in 0..s.len {
-		b[i] = C.toupper(s.str[i])
+		b[i] = byte(C.toupper(s.str[i]))
 	}
 	return tos(b, s.len)
 }
@@ -838,16 +838,6 @@ pub fn (s string) find_between(start, end string) string {
 
 // TODO generic
 fn (ar []string) contains(val string) bool {
-	for s in ar {
-		if s == val {
-			return true
-		}
-	}
-	return false
-}
-
-// TODO generic
-fn (ar []int) contains(val int) bool {
 	for s in ar {
 		if s == val {
 			return true
@@ -940,10 +930,7 @@ pub fn (s string) trim_suffix(str string) string {
 	return s
 }
 
-// fn print_cur_thread() {
-// //C.printf("tid = %08x \n", pthread_self());
-// }
-fn compare_strings(a, b &string) int {
+pub fn compare_strings(a, b &string) int {
 	if a.lt(b) {
 		return -1
 	}
@@ -995,7 +982,7 @@ pub fn (s string) ustring() ustring {
 		// runes will have at least s.len elements, save reallocations
 		// TODO use VLA for small strings?
 
-		runes: __new_array(0, s.len, sizeof(int))
+		runes: __new_array(0, s.len, int(sizeof(int)))
 	}
 	for i := 0; i < s.len; i++ {
 		char_len := utf8_char_len(s.str[i])
@@ -1013,7 +1000,7 @@ __global g_ustring_runes []int
 
 pub fn (s string) ustring_tmp() ustring {
 	if g_ustring_runes.len == 0 {
-		g_ustring_runes = __new_array(0, 128, sizeof(int))
+		g_ustring_runes = __new_array(0, 128, int(sizeof(int)))
 	}
 	mut res := ustring{
 		s: s
@@ -1061,7 +1048,7 @@ fn (u ustring) ge(a ustring) bool {
 pub fn (u ustring) add(a ustring) ustring {
 	mut res := ustring{
 		s: u.s + a.s
-		runes: __new_array(0, u.s.len + a.s.len, sizeof(int))
+		runes: __new_array(0, u.s.len + a.s.len, int(sizeof(int)))
 	}
 	mut j := 0
 	for i := 0; i < u.s.len; i++ {
@@ -1229,7 +1216,7 @@ pub fn (s string) all_after_last(dot string) string {
 	return s.right(pos + dot.len)
 }
 
-pub fn (s string) after(dot string) string { 
+pub fn (s string) after(dot string) string {
 	return s.all_after_last(dot)
 }
 

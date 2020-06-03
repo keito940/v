@@ -207,7 +207,6 @@ pub fn mv(old, new string) {
 }
 
 fn C.CopyFile(&u32, &u32, int) int
-// TODO implement actual cp for linux
 pub fn cp(old, new string) ?bool {
 	$if windows {
 		w_old := old.replace('/', '\\')
@@ -221,8 +220,34 @@ pub fn cp(old, new string) ?bool {
 			return error_with_code('failed to copy $old to $new', int(result))
 		}
 	} $else {
-		os.system('cp "$old" "$new"')
-		return true // TODO make it return true or error when cp for linux is implemented
+		fp_from := C.open(old.str, C.O_RDONLY)
+		if fp_from < 0 { // Check if file opened
+			return error_with_code('cp: failed to open $old', int(fp_from))
+		}
+		fp_to := C.open(new.str, C.O_WRONLY | C.O_CREAT | C.O_TRUNC)
+		if fp_to < 0 { // Check if file opened (permissions problems ...)
+			C.close(fp_from)
+			return error_with_code('cp: failed to write to $new', int(fp_to))
+		}
+		mut buf := [1024]byte
+		mut count := 0
+		for {
+			// FIXME: use sizeof, bug: 'os__buf' undeclared
+			//count = C.read(fp_from, buf, sizeof(buf))
+			count = C.read(fp_from, buf, 1024)
+			if count == 0 {
+				break
+			}
+			if C.write(fp_to, buf, count) < 0 {
+				return error_with_code('cp: failed to write to $new', int(-1))
+			}
+		}
+		from_attr := C.stat{}
+		C.stat(old.str, &from_attr)
+		if C.chmod(new.str, from_attr.st_mode) < 0 {
+			return error_with_code('failed to set permissions for $new', int(-1))
+		}
+		return true
 	}
 }
 
@@ -301,7 +326,11 @@ pub fn fileno(cfile voidptr) int {
 	$if windows {
 		return C._fileno(cfile)
 	} $else {
-		return C.fileno(cfile)
+		cfile_casted := &C.FILE(0) // FILE* cfile_casted = 0;
+		cfile_casted = cfile
+		// Required on FreeBSD/OpenBSD/NetBSD as stdio.h defines fileno(..) with a macro
+		// that performs a field access on its argument without casting from void*.
+		return C.fileno(cfile_casted)
 	}
 }
 
@@ -617,7 +646,7 @@ pub fn is_writable_folder(folder string) ?bool {
 		return error('`folder` is not a folder')
 	}
 	tmp_perm_check := os.join_path(folder, 'tmp_perm_check')
-	f := os.open_file(tmp_perm_check, 'w+', 0o700) or {
+	mut f := os.open_file(tmp_perm_check, 'w+', 0o700) or {
 		return error('cannot write to folder `$folder`: $err')
 	}
 	f.close()
@@ -780,6 +809,35 @@ pub fn get_raw_line() string {
 		return tos3(buf)
 		//res := tos_clone(buf)
 		//return res
+	}
+}
+
+pub fn get_raw_stdin() []byte {
+	$if windows {
+		unsafe {
+			block_bytes := 512
+			mut buf := malloc(block_bytes)
+			h_input := C.GetStdHandle(std_input_handle)
+			mut bytes_read := 0
+			mut offset := 0
+			for {
+				pos := buf + offset
+				res := C.ReadFile(h_input, pos, block_bytes, &bytes_read, 0)
+				offset += bytes_read
+
+				if !res {
+					break
+				}
+
+				buf = v_realloc(buf, offset + block_bytes + (block_bytes-bytes_read))
+			}
+
+			C.CloseHandle(h_input)
+
+			return array{element_size: 1 data: voidptr(buf) len: offset cap: offset }
+		}
+	} $else {
+		panic('get_raw_stdin not implemented on this platform...')
 	}
 }
 
@@ -1090,12 +1148,12 @@ pub fn real_path(fpath string) string {
 	mut fullpath := vcalloc(max_path_len)
 	mut ret := charptr(0)
 	$if windows {
-		ret = C._fullpath(fullpath, fpath.str, max_path_len)
+		ret = charptr(C._fullpath(fullpath, fpath.str, max_path_len))
 		if ret == 0 {
 			return fpath
 		}
 	} $else {
-		ret = C.realpath(fpath.str, fullpath)
+		ret = charptr(C.realpath(fpath.str, fullpath))
 		if ret == 0 {
 			return fpath
 		}
@@ -1324,7 +1382,7 @@ pub fn open(path string) ?File {
 	}
   */
 	cfile := vfopen(path, 'rb')
-	if cfile == 0 {
+	if cfile == voidptr(0) {
 		return error('failed to open file "$path"')
 	}
 	fd := fileno(cfile)
@@ -1361,7 +1419,7 @@ pub fn create(path string) ?File {
 	}
   */
 	cfile := vfopen(path, 'wb')
-	if cfile == 0 {
+	if cfile == voidptr(0) {
 		return error('failed to create file "$path"')
 	}
 	fd := fileno(cfile)

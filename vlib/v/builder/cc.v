@@ -147,7 +147,11 @@ fn (mut v Builder) cc() {
 	if v.pref.is_shared {
 		linker_flags << '-shared'
 		a << '-fPIC' // -Wl,-z,defs'
-		v.pref.out_name += '.so'
+		$if macos {
+			v.pref.out_name += '.dylib'
+		} $else {
+			v.pref.out_name += '.so'
+		}
 	}
 	if v.pref.is_bare {
 		a << '-fno-stack-protector'
@@ -271,10 +275,11 @@ fn (mut v Builder) cc() {
 	if v.pref.sanitize {
 		a << '-fsanitize=leak'
 	}
-	// Cross compiling linux
+	// Cross compiling for linux
 	if v.pref.os == .linux {
 		$if !linux {
 			v.cc_linux_cross()
+			return
 		}
 	}
 	// Cross compiling windows
@@ -472,15 +477,37 @@ fn (mut v Builder) cc() {
 }
 
 fn (mut c Builder) cc_linux_cross() {
-	/*
-	sysroot := '/tmp/lld/linuxroot/'
-		// Build file.o
-		a << '-c --sysroot=$sysroot -target x86_64-linux-gnu'
-		// Right now `out_name` can be `file`, not `file.o`
-		if !v.out_name.ends_with('.o') {
-			v.out_name = v.out_name + '.o'
+	parent_dir := os.home_dir() + '.vmodules'
+	sysroot := os.home_dir() + '.vmodules/linuxroot/'
+	if !os.is_dir(sysroot) {
+		println('Downloading files for Linux cross compilation (~18 MB)...')
+		zip_file := sysroot[..sysroot.len-1] + '.zip'
+		os.system('curl -L -o $zip_file https://github.com/vlang/v/releases/download/0.1.27/linuxroot.zip ')
+		os.system('unzip -q $zip_file -d $parent_dir')
+		if !os.is_dir(sysroot) {
+			println('Failed to download.')
+			exit(1)
 		}
-		*/
+	}
+	mut cc_args := '-fPIC -w -c -target x86_64-linux-gnu -c -o x.o $c.out_name_c -I $sysroot/include'
+	if os.system('cc $cc_args') != 0 {
+		println('Cross compilation for Linux failed. Make sure you have clang installed.')
+	}
+	mut args := [
+		'-L SYSROOT/usr/lib/x86_64-linux-gnu/'
+		'--sysroot=SYSROOT -v -o hi -m elf_x86_64'
+		'-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2'
+		'SYSROOT/crt1.o SYSROOT/crti.o x.o'
+		'SYSROOT/lib/x86_64-linux-gnu/libc.so.6'
+		'-lc'
+		'SYSROOT/crtn.o'
+	]
+	mut s := args.join(' ')
+	s = s.replace('SYSROOT', sysroot)
+	if	os.system('$sysroot/ld.lld ' + s) != 0 {
+		println('Cross compilation for Linux failed. Make sure you have clang installed.')
+	}
+	println(c.pref.out_name + ' has been successfully compiled')
 }
 
 fn (mut c Builder) cc_windows_cross() {
@@ -546,7 +573,7 @@ fn (mut c Builder) cc_windows_cross() {
 			println('brew install mingw-w64')
 		}
 		$if linux {
-			println('sudo apt install -y mingw-w64')
+			println('Try `sudo apt install -y mingw-w64` on Debian based distros, or `sudo pacman -S mingw-w64-gcc` on Arch, etc...')
 		}
 		exit(1)
 	}
@@ -597,7 +624,8 @@ fn (v &Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CFlag
 	}
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
-	cmd := '$v.pref.ccompiler $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget '
+	cppoptions := if v.pref.ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }
+	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget '
 	res := os.exec(cmd) or {
 		println('failed thirdparty object build cmd: $cmd')
 		verror(err)

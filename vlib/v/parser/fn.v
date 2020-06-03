@@ -29,9 +29,14 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	if p.tok.kind == .lt {
 		// `foo<int>(10)`
 		p.next() // `<`
-		generic_type = p.parse_type()
+		p.expr_mod = ''
+		mut generic_type = p.parse_type()
 		p.check(.gt) // `>`
-		p.table.register_fn_gen_type(fn_name, generic_type)
+		// In case of `foo<T>()`
+		// T is unwrapped and registered in the checker.
+		if generic_type != table.t_type {
+			p.table.register_fn_gen_type(fn_name, generic_type)
+		}
 	}
 	p.check(.lpar)
 	args := p.call_args()
@@ -158,10 +163,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// TODO: talk to alex, should mut be parsed with the type like this?
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
 		rec_type = p.parse_type_with_mut(rec_mut)
-		sym := p.table.get_type_symbol(rec_type)
-		if sym.mod != p.mod && sym.mod != '' {
-			p.error('cannot define methods on types from other modules (current module is `$p.mod`, `$sym.name` is from `$sym.mod`)')
-		}
 		if is_amp && rec_mut {
 			p.error('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`')
 		}
@@ -220,7 +221,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				continue
 			}
 			sym := p.table.get_type_symbol(arg.typ)
-			if sym.kind !in [.array, .struct_, .map, .placeholder] && !arg.typ.is_ptr() {
+			if sym.kind !in [.array, .struct_, .map, .placeholder] && arg.typ != table.t_type &&
+				!arg.typ.is_ptr() {
 				p.error('mutable arguments are only allowed for arrays, maps, and structs\n' +
 					'return values instead: `fn foo(n mut int) {` => `fn foo(n int) int {`')
 			}
@@ -358,6 +360,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	}
 }
 
+// fn decl
 fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 	p.check(.lpar)
 	mut args := []table.Arg{}
@@ -380,7 +383,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 				is_variadic = true
 			}
 			mut arg_type := p.parse_type()
-			if is_mut {
+			if is_mut && arg_type != table.t_type {
 				// if arg_type.is_ptr() {
 				// p.error('cannot mut')
 				// }
@@ -424,7 +427,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 				is_variadic = true
 			}
 			mut typ := p.parse_type()
-			if is_mut {
+			if is_mut && typ != table.t_type {
 				if typ.is_ptr() {
 					// name := p.table.get_type_name(typ)
 					// p.warn('`$name` is already a reference, it cannot be marked as `mut`')

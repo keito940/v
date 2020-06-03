@@ -91,10 +91,20 @@ fn main() {
     println('hello world')
 }
 ```
+Save that snippet into a file `hello.v` . Now do: `v run hello.v` .
 
-Functions are declared with `fn`. The return type goes after the function
-name. In this case `main` doesn't return anything, so the return type can be
-omitted.
+> That is assuming you have symlinked your V with `v symlink`, as described 
+[here](https://github.com/vlang/v/blob/master/README.md#symlinking).
+If you have not yet, you have to type the path to V manually.
+
+Congratulations - you just wrote your first V program, and executed it!
+
+> You can compile a program without execution with `v hello.v`.
+See `v help` for all supported commands.
+
+In the above example, you can see that functions are declared with `fn`.
+The return type goes after the function name. In this case `main` doesn't 
+return anything, so the return type can be omitted.
 
 As in many other languages (such as C, Go and Rust), `main` is an entry point.
 
@@ -269,6 +279,8 @@ rune // represents a Unicode code point
 
 f32 f64
 
+any_int, any_float // internal intermediate types of number literals
+
 byteptr // these two are mostly used for C interop
 voidptr
 
@@ -276,6 +288,26 @@ any // similar to C's void* and Go's interface{}
 ```
 
 Please note that unlike C and Go, `int` is always a 32 bit integer.
+
+There is an exceptions to the rule that all operators
+in V must have values of the same type on both sides. A small primitive type
+on one side can be automatically promoted if it fits
+completely into the data range of the type on the other side.
+These are the allowed possibilities:
+
+```
+   i8 → i16 → int → i64
+                  ↘     ↘
+                    f32 → f64
+                  ↗     ↗
+ byte → u16 → u32 → u64 ⬎
+      ↘     ↘     ↘      ptr
+   i8 → i16 → int → i64 ⬏
+```
+An `int` value for example can be automatically promoted to `f64`
+or `i64` but not to `f32` or `u32`. (`f32` would mean precission
+loss for large values and `u32` would mean loss of the sign for
+negative values).
 
 ## Strings
 
@@ -1431,7 +1463,7 @@ v fmt file.v
 It's recommended to set up your editor, so that vfmt runs on every save.
 A vfmt run is usually pretty cheap (takes <30ms).
 
-Always run `v fmt file.v` before pushing your code.
+Always run `v fmt -w file.v` before pushing your code.
 
 ## Writing Documentation
 
@@ -1471,7 +1503,7 @@ You can also use stopwatches to measure just portions of your code explicitly:
 ```v
 import time
 fn main(){
-    sw := time.new_stopwatch()
+    sw := time.new_stopwatch({})
     println('Hello world')
     println('Greeting the world took: ${sw.elapsed().nanoseconds()}ns')
 }
@@ -1621,6 +1653,32 @@ $if debug {
 
 If you want an `if` to be evaluated at compile time it must be prefixed with a `$` sign. Right now it can only be used to detect
 an OS or a `-debug` compilation option.
+
+## Compile time pseudo variables
+
+V also gives your code access to a set of pseudo string variables, that are substituted at compile time:
+
+- `@FN` => replaced with the name of the current V function
+- `@MOD` => replaced with the name of the current V module
+- `@STRUCT` => replaced with the name of the current V struct
+- `@FILE` => replaced with the path of the V source file
+- `@LINE` => replaced with the V line number where it appears (as a string).
+- `@COLUMN` => replaced with the column where it appears (as a string).
+- `@VEXE` => replaced with the path to the V compiler
+- `@VHASH`  => replaced with the shortened commit hash of the V compiler (as a string).
+- `@VMOD_FILE` => replaced with the contents of the nearest v.mod file (as a string).
+
+That allows you to do the following example, useful while debugging/logging/tracing your code:
+```v
+eprintln( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
+```
+
+Another example, is if you want to embed the version/name from v.mod *inside* your executable:
+```v
+import v.vmod
+vm := vmod.decode( @VMOD_FILE ) or { panic(err) }
+eprintln('$vm.name $vm.version\n $vm.description')
+```
 
 ## Reflection via codegen
 
