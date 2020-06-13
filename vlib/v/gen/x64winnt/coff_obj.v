@@ -2,12 +2,19 @@ module x64winnt
 
 #flag -lws2_32
 
-struct ImageFileHeader {
-	Machine u16
-	NumberOfSections u16
-	TimeDateStamp u32
-	PointerToSymbolTable u32
-	NumberOfSymbols u32
-	SizeOfOptionalHeader u16
+pub struct ImageFileHeader {
+	machine u16
+	// number of sections.
+	numsec u16
+	// timedate stamp.
+	timedate_s u32
+	// pointer of symbol table.
+	ptrsymtab u32
+	num_symbols u32
+	sizeof_optional_header u16
 	Characterristics u16
+}
+
+pub struct ImageCoffSymbolsHeader {
+	num_sym u32
 }
