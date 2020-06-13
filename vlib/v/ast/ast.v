@@ -13,7 +13,7 @@ pub type Expr = AnonFn | ArrayInit | AsCast | AssignExpr | Assoc | BoolLiteral |
 	CastExpr | CharLiteral | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr |
 	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | MapInit | MatchExpr | None | OrExpr |
 	ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | StringInterLiteral |
-	StringLiteral | StructInit | Type | TypeOf
+	StringLiteral | StructInit | Type | TypeOf | Likely
 
 pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompIf | ConstDecl |
 	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
@@ -210,6 +210,7 @@ pub mut:
 pub struct FnDecl {
 pub:
 	name          string
+	mod           string
 	stmts         []Stmt
 	args          []table.Arg
 	is_deprecated bool
@@ -755,6 +756,13 @@ pub:
 	type_name string
 }
 
+pub struct Likely {
+pub:
+	expr     Expr
+	pos      token.Position
+	is_likely bool // false for _unlikely_
+}
+
 pub struct TypeOf {
 pub:
 	expr      Expr
@@ -778,8 +786,14 @@ pub mut:
 }
 
 pub struct ComptimeCall {
-	name string
-	left Expr
+pub:
+	method_name string
+	left        Expr
+	is_vweb     bool
+	// vweb_stmts  []Stmt
+	vweb_tmpl   File
+pub mut:
+	sym         table.TypeSymbol
 }
 
 pub struct None {
@@ -792,14 +806,6 @@ pub fn expr_is_blank_ident(expr Expr) bool {
 	match expr {
 		Ident { return it.kind == .blank_ident }
 		else { return false }
-	}
-}
-
-[inline]
-pub fn expr_is_call(expr Expr) bool {
-	return match expr {
-		CallExpr { true }
-		else { false }
 	}
 }
 
@@ -888,6 +894,9 @@ pub fn (expr Expr) position() token.Position {
 		}
 		// ast.Type { }
 		StructInit {
+			return it.pos
+		}
+		Likely {
 			return it.pos
 		}
 		// ast.TypeOf { }

@@ -20,6 +20,7 @@ fn C.sprintf(a ...voidptr) int
 
 fn C.strlen(s byteptr) int
 
+fn C.sscanf(byteptr, byteptr,...byteptr) int
 
 fn C.isdigit(s byteptr) bool
 // stdio.h
@@ -174,27 +175,6 @@ fn C.WIFSIGNALED() bool
 fn C.WTERMSIG() int
 
 
-fn C.DEFAULT_LE() bool
-
-
-fn C.DEFAULT_EQ() bool
-
-
-fn C.DEFAULT_GT() bool
-
-
-fn C.DEFAULT_EQUAL() bool
-
-
-fn C.DEFAULT_NOT_EQUAL() bool
-
-
-fn C.DEFAULT_LT() bool
-
-
-fn C.DEFAULT_GE() bool
-
-
 fn C.isatty() int
 
 
@@ -222,6 +202,10 @@ fn C.SetHandleInformation(hObject voidptr, dwMask u32, dw_flags u32) bool
 fn C.ExpandEnvironmentStringsW(lpSrc &u16, lpDst &u16, nSize u32) u32
 
 
+fn C.SendMessageTimeout() u32
+fn C.SendMessageTimeoutW(hWnd voidptr, Msg u32, wParam &u16, lParam &u32, fuFlags u32, uTimeout u32, lpdwResult &u64) u32
+
+
 fn C.CreateProcessW(lpApplicationName &u16, lpCommandLine &u16, lpProcessAttributes voidptr, lpThreadAttributes voidptr, bInheritHandles bool, dwCreationFlags u32, lpEnvironment voidptr, lpCurrentDirectory &u16, lpStartupInfo voidptr, lpProcessInformation voidptr) bool
 
 
@@ -231,16 +215,19 @@ fn C.ReadFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead u32, lpNumbe
 fn C.GetFileAttributesW(lpFileName byteptr) u32
 
 
+fn C.RegQueryValueEx() voidptr
 fn C.RegQueryValueExW(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData byteptr, lpcbData &u32) int
 
 
+fn C.RegOpenKeyEx() voidptr
 fn C.RegOpenKeyExW(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, phkResult voidptr) int
 
 
+fn C.RegSetValueEx() voidptr
+fn C.RegSetValueExW(hKey voidptr, lpValueName &u16, Reserved u32, dwType u32, lpData byteptr, lpcbData u32) int
+
+
 fn C.RegCloseKey()
-
-
-fn C.RegQueryValueEx() voidptr
 
 
 fn C.RemoveDirectory() int
@@ -358,7 +345,6 @@ fn C.CloseHandle()
 fn C.GetExitCodeProcess()
 
 
-fn C.RegOpenKeyEx() voidptr
 
 
 fn C.GetTickCount() i64
@@ -414,3 +400,6 @@ fn C.pthread_mutex_unlock(voidptr) int
 fn C.read(fd int, buf voidptr, count size_t) int
 fn C.write(fd int, buf voidptr, count size_t) int
 fn C.close(fd int) int
+
+// used by gl, stbi, freetype
+fn C.glTexImage2D()

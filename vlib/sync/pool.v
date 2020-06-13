@@ -1,4 +1,7 @@
 module sync
+
+import runtime
+
 // * Goal: this file provides a convenient way to run identical tasks over a list
 // * of items in parallel, without worrying about waitgroups, mutexes and so on.
 // *
@@ -36,7 +39,6 @@ module sync
 // *       2) idx - the index of the currently processed item
 // *       3) task_id - the index of the worker thread in which the callback
 // *             function is running.
-import runtime
 
 pub const (
 	no_result = voidptr(0)
@@ -124,7 +126,7 @@ pub fn (mut pool PoolProcessor) work_on_pointers(items []voidptr) {
 // process_in_thread does the actual work of worker thread.
 // It is a workaround for the current inability to pass a
 // method in a callback.
-fn process_in_thread(pool mut PoolProcessor, task_id int) {
+fn process_in_thread(mut pool PoolProcessor, task_id int) {
 	cb := ThreadCB(pool.thread_cb)
 	mut idx := 0
 	ilen := pool.items.len

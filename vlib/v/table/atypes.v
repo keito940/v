@@ -36,8 +36,8 @@ pub mut:
 	is_public  bool
 }
 
+// max of 8
 pub enum TypeFlag {
-	unset
 	optional
 	variadic
 	generic
@@ -76,7 +76,7 @@ pub fn (t Type) set_nr_muls(nr_muls int) Type {
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('set_nr_muls: nr_muls must be between 0 & 255')
 	}
-	return (((int(t) >> 24) & 0xff) << 24) | (nr_muls << 16) | (u16(t) & 0xffff)
+	return int(t) & 0xff00ffff | (nr_muls << 16)
 }
 
 // increments nr_nuls on `t` and return it
@@ -86,7 +86,8 @@ pub fn (t Type) to_ptr() Type {
 	if nr_muls == 255 {
 		panic('to_ptr: nr_muls is already at max of 255')
 	}
-	return (((int(t) >> 24) & 0xff) << 24) | ((nr_muls + 1) << 16) | (u16(t) & 0xffff)
+
+	return int(t) & 0xff00ffff | ((nr_muls + 1) << 16)
 }
 
 // decrement nr_muls on `t` and return it
@@ -96,32 +97,44 @@ pub fn (t Type) deref() Type {
 	if nr_muls == 0 {
 		panic('deref: type `$t` is not a pointer')
 	}
-	return (((int(t) >> 24) & 0xff) << 24) | ((nr_muls - 1) << 16) | (u16(t) & 0xffff)
+	return int(t) & 0xff00ffff | ((nr_muls - 1) << 16)
 }
 
-// return the flag that is set on `t`
-[inline]
-pub fn (t Type) flag() TypeFlag {
-	return (int(t) >> 24) & 0xff
-}
-
-// set the flag on `t` to `flag` and return it
+// set `flag` on `t` and return `t`
 [inline]
 pub fn (t Type) set_flag(flag TypeFlag) Type {
-	return (int(flag) << 24) | (((int(t) >> 16) & 0xff) << 16) | (u16(t) & 0xffff)
+  return int(t) | (1 << (int(flag) + 24))
 }
 
-// return true if the flag set on `t` is `flag`
+// clear `flag` on `t` and return `t`
 [inline]
-pub fn (t Type) flag_is(flag TypeFlag) bool {
-	return (int(t) >> 24) & 0xff == flag
+pub fn (t Type) clear_flag(flag TypeFlag) Type {
+  return int(t) & ~(1 << (int(flag) + 24))
+}
+
+// clear all flags
+[inline]
+pub fn (t Type) clear_flags() Type {
+	return int(t) & 0xffffff
+}
+
+// return true if `flag` is set on `t`
+[inline]
+pub fn (t Type) has_flag(flag TypeFlag) bool {
+  return int(t) & (1 << (int(flag) + 24)) > 0
+}
+
+// copy flags & nr_muls from `t_from` to `t` and return `t`
+[inline]
+pub fn (t Type) derive(t_from Type) Type {
+	return (0xffff0000 & t_from) | u16(t)
 }
 
 // return new type with TypeSymbol idx set to `idx`
 [inline]
 pub fn new_type(idx int) Type {
-	if idx < 1 || idx > 65536 {
-		panic('new_type_id: idx must be between 1 & 65536')
+	if idx < 1 || idx > 65535 {
+		panic('new_type_id: idx must be between 1 & 65535')
 	}
 	return idx
 }
@@ -129,8 +142,8 @@ pub fn new_type(idx int) Type {
 // return new type with TypeSymbol idx set to `idx` & nr_muls set to `nr_muls`
 [inline]
 pub fn new_type_ptr(idx, nr_muls int) Type {
-	if idx < 1 || idx > 65536 {
-		panic('new_type_ptr: idx must be between 1 & 65536')
+	if idx < 1 || idx > 65535 {
+		panic('new_type_ptr: idx must be between 1 & 65535')
 	}
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('new_type_ptr: nr_muls must be between 0 & 255')
@@ -265,8 +278,6 @@ pub const (
 )
 
 pub struct MultiReturn {
-pub:
-	name  string
 pub mut:
 	types []Type
 }
@@ -673,7 +684,7 @@ pub fn (table &Table) type_to_str(t Type) string {
 	mut res := sym.name
 	if sym.kind == .multi_return {
 		res = '('
-		if t.flag_is(.optional) {
+		if t.has_flag(.optional) {
 			res = '?' + res
 		}
 		mr_info := sym.info as MultiReturn
@@ -689,8 +700,10 @@ pub fn (table &Table) type_to_str(t Type) string {
 	if sym.kind == .array || 'array_' in res {
 		res = res.replace('array_', '[]')
 	}
+	mut map_start := ''
 	if sym.kind == .map || 'map_string_' in res {
 		res = res.replace('map_string_', 'map[string]')
+		map_start = 'map[string]'
 	}
 	// mod.submod.submod2.Type => submod2.Type
 	if res.contains('.') {
@@ -701,13 +714,20 @@ pub fn (table &Table) type_to_str(t Type) string {
 		if sym.kind == .array && !res.starts_with('[]') {
 			res = '[]' + res
 		}
+		if sym.kind == .map && !res.starts_with('map') {
+			res = map_start + res
+		}
 	}
 	nr_muls := t.nr_muls()
 	if nr_muls > 0 {
 		res = strings.repeat(`&`, nr_muls) + res
 	}
-	if t.flag_is(.optional) {
-		res = '?' + res
+	if t.has_flag(.optional) {
+		if sym.kind == .void {
+			res = '?'
+		} else {
+			res = '?' + res
+		}
 	}
 	/*
 	if res.starts_with(cur_mod +'.') {

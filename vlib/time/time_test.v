@@ -149,3 +149,35 @@ fn test_add_days() {
 fn test_str() {
 	assert '1980-07-11 21:23:42' == time_to_test.str()
 }
+
+// not optimal test but will find obvious bugs
+fn test_now() {
+	now := time.now()
+
+	// The year the test was built
+	assert now.year 			>= 2020
+	assert now.month 			> 0
+	assert now.month 			<= 12
+	assert now.minute 			>= 0
+	assert now.minute 			< 60
+	assert now.second 			>=0
+	assert now.second 			<= 60 // <= 60 cause of leap seconds
+	assert now.microsecond 		>= 0
+	assert now.microsecond 		< 1000000
+
+}
+
+fn test_utc() {
+	now := time.utc()
+
+	// The year the test was built
+	assert now.year 			>= 2020
+	assert now.month 			> 0
+	assert now.month 			<= 12
+	assert now.minute 			>= 0
+	assert now.minute 			< 60
+	assert now.second 			>=0
+	assert now.second 			<= 60 // <= 60 cause of leap seconds
+	assert now.microsecond 		>= 0
+	assert now.microsecond 		< 1000000
+}

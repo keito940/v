@@ -37,7 +37,7 @@
 - Built-in ORM
 - C and JavaScript backends
 
-A stable 0.2 release is planned for May 2020. Right now V is in an alpha stage.
+A stable 0.2 release is planned for June 2020. Right now V is in an alpha stage.
 
 ## Installing V from source
 
@@ -52,10 +52,9 @@ make
 That's it! Now you have a V executable at `[path to V repo]/v`. 
 `[path to V repo]` can be anywhere.
 
-(On Windows `make` means running `make.bat`, so make sure you use `cmd.exe`.)
+(On Windows `make` means running `make.bat`, so make sure you use `cmd.exe`)
 
-After the above, you can try doing: `./v run examples/hello_world.v` on Unix, 
-or `.\v.exe run examples\hello_world.v` on Windows.
+Now you can try `./v run examples/hello_world.v` (`v.exe` on Windows).
 
 V is being constantly updated. To update V, simply run:
 
@@ -155,28 +154,24 @@ v run tetris/tetris.v
 
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
 
-In order to build Tetris and anything else using the graphics module, you will need to install glfw and freetype libraries.
+In order to build Tetris and anything else using the graphics module on non-Windows systems, you will need to install freetype libraries.
 
 If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
 
 ```
 macOS:
-brew install glfw freetype openssl
+brew install freetype openssl
 
 Debian/Ubuntu:
-sudo apt install libglfw3 libglfw3-dev libfreetype6-dev libssl-dev
+sudo apt install libfreetype6-dev libssl-dev
 
 Arch/Manjaro:
-sudo pacman -S glfw-x11 freetype2
+sudo pacman -S freetype2
 
 Fedora:
-sudo dnf install glfw glfw-devel freetype-devel
-
-Windows:
-v setup-freetype
+sudo dnf install freetype-devel
 ```
 
-glfw dependency will be removed soon.
 
 ## V UI
 

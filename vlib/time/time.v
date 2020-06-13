@@ -39,13 +39,14 @@ const (
 
 pub struct Time {
 pub:
-	year   int
-	month  int
-	day    int
-	hour   int
-	minute int
-	second int
-	unix   u64
+	year   			int
+	month  			int
+	day    			int
+	hour   			int
+	minute 			int
+	second 			int
+	microsecond 	int
+	unix   			u64
 }
 
 pub enum FormatTime {
@@ -84,11 +85,47 @@ pub struct C.timeval {
 fn C.localtime(t &C.time_t) &C.tm
 fn C.time(t &C.time_t) C.time_t
 
+
 // now returns current local time.
 pub fn now() Time {
+	$if macos {
+		return darwin_now()
+	}
+	$if windows {
+		return win_now()
+	}
+	$if solaris {
+		return solaris_now()
+	}
+	$if linux {
+		return linux_now()
+	}
+	// defaults to most common feature, the microsecond precision is not available
+	// in this API call
 	t := C.time(0)
 	now := C.localtime(&t)
-	return convert_ctime(now)
+	return convert_ctime(now, 0)
+}
+
+// utc returns the current time in utc
+pub fn utc() Time {
+	$if macos {
+		return darwin_utc()
+	}
+	$if windows {
+		return win_utc()
+	}
+	$if solaris {
+		return solaris_utc()
+	}
+	$if linux {
+		return linux_utc()
+	}
+	// defaults to most common feature, the microsecond precision is not available
+	// in this API call
+	t := C.time(0)
+	_ = C.time(&t)
+	return unix2(int(t), 0)
 }
 
 // smonth returns month name.
@@ -107,6 +144,7 @@ pub fn new_time(t Time) Time {
 		minute: t.minute
 		second: t.second
 		unix: u64(t.unix_time())
+		microsecond: t.microsecond
 	}
 	// TODO Use the syntax below when it works with reserved keywords like `unix`
 	// return {
@@ -151,6 +189,44 @@ fn since(t Time) int {
 // relative returns a string representation of difference between time
 // and current time.
 pub fn (t Time) relative() string {
+	now := time.now()
+	secs := now.unix - t.unix
+	if secs <= 30 {
+		// right now or in the future
+		// TODO handle time in the future
+		return 'now'
+	}
+	if secs < 60 {
+		return '1m'
+	}
+	if secs < 3600 {
+		m := secs/60
+		if m == 1 {
+			return '1 minute ago'
+		}
+		return '$m minutes ago'
+	}
+	if secs < 3600 * 24 {
+		h := secs/3600
+		if h == 1 {
+			return '1 hour ago'
+		}
+		return '$h hours ago'
+	}
+	if secs < 3600 * 24 * 5 {
+		d:=secs/3600/24
+		if d == 1 {
+			return '1 day ago'
+		}
+		return '$d days ago'
+	}
+	if secs > 3600 * 24 * 10000 {
+		return ''
+	}
+	return t.md()
+}
+
+pub fn (t Time) relative_short() string {
 	now := time.now()
 	secs := now.unix - t.unix
 	if secs <= 30 {
@@ -264,7 +340,7 @@ pub fn (t Time) str() string {
 	return t.format_ss()
 }
 
-fn convert_ctime(t C.tm) Time {
+fn convert_ctime(t C.tm, microsecond int) Time {
 	return Time{
 		year: t.tm_year + 1900
 		month: t.tm_mon + 1
@@ -272,6 +348,7 @@ fn convert_ctime(t C.tm) Time {
 		hour: t.tm_hour
 		minute: t.tm_min
 		second: t.tm_sec
+		microsecond: microsecond
 		unix: u64(make_unix_time(t))
 	}
 }

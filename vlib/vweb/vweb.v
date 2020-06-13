@@ -128,22 +128,21 @@ pub fn (ctx &Context) get_header(key string) string {
 
 //}
 
-pub fn foo<T>() {
-
+pub fn run<T>(port int) {
+	mut app := T{}
+	run_app<T>(mut app, port)
 }
 
-pub fn run<T>(port int) {
-//pub fn run<T>(app mut T, port int) {
-	println('Running a Vweb app on http://localhost:$port ...')
+pub fn run_app<T>(mut app T, port int) {
+	println('Running a Vweb app on http://localhost:$port')
 	l := net.listen(port) or { panic('failed to listen') }
-	mut app := T{}
 	app.vweb = Context{}
-	app.init()
+	app.init_once()
 	//app.reset()
 	for {
 		conn := l.accept() or { panic('accept() failed') }
 		//handle_conn<T>(conn, mut app)
-		app = handle_conn<T>(conn, app)
+		handle_conn<T>(conn, mut app)
 		// TODO move this to handle_conn<T>(conn, app)
 		//message := readall(conn)
 		//println(message)
@@ -169,13 +168,15 @@ pub fn run<T>(port int) {
 	}
 }
 
-//fn handle_conn<T>(conn net.Socket, app mut T) {
-fn handle_conn<T>(conn net.Socket, app_ T) T {
-	mut app := app_
+fn handle_conn<T>(conn net.Socket, mut app T) {
+//fn handle_conn<T>(conn net.Socket, app_ T) T {
+	//mut app := app_
 	//first_line := strip(lines[0])
 	first_line := conn.read_line()
-	println('firstline="$first_line"')
-	$if debug { println(first_line) }
+	$if debug {
+		println('firstline="$first_line"')
+	}
+
 	// Parse the first line
 	// "GET / HTTP/1.1"
 	//first_line := s.all_before('\n')
@@ -184,7 +185,7 @@ fn handle_conn<T>(conn net.Socket, app_ T) T {
 		println('no vals for http')
 		conn.send_string(http_500) or {}
 		conn.close() or {}
-		return app
+		return
 		//continue
 	}
 	mut headers := []string{}
@@ -265,7 +266,7 @@ fn handle_conn<T>(conn net.Socket, app_ T) T {
 			println('no vals for http')
 		}
 		conn.close() or {}
-		return app
+		return
 		//continue
 	}
 
@@ -276,16 +277,17 @@ fn handle_conn<T>(conn net.Socket, app_ T) T {
 	if static_file != '' && mime_type != '' {
 		data := os.read_file(static_file) or {
 			conn.send_string(http_404) or {}
-			return app
+			return
 		}
 		app.vweb.send_response_to_client(mime_type, data)
-		return app
+		return
 	}
 
 	// Call the right action
 	$if debug {
 		println('action=$action')
 	}
+	app.init()
 	app.$action()
 	/*
 	app.$action() or {
@@ -293,8 +295,8 @@ fn handle_conn<T>(conn net.Socket, app_ T) T {
 	}
 	*/
 	conn.close() or {}
-	app.reset()
-	return app
+	//app.reset()
+	return
 }
 
 fn (mut ctx Context) parse_form(s string) {

@@ -42,6 +42,10 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	args := p.call_args()
 	last_pos := p.tok.position()
 	p.check(.rpar)
+	// ! in mutable methods
+	if p.tok.kind == .not {
+		p.next()
+	}
 	pos := token.Position{
 		line_nr: first_pos.line_nr
 		pos: first_pos.pos
@@ -67,7 +71,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 			is_used: true
 		})
 		or_kind = .block
-		or_stmts = p.parse_block_no_scope()
+		or_stmts = p.parse_block_no_scope(false)
 		p.close_scope()
 		p.inside_or_expr = was_inside_or_expr
 	}
@@ -113,6 +117,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 }
 
 fn (mut p Parser) fn_decl() ast.FnDecl {
+	p.top_level_statement_start()
 	start_pos := p.tok.position()
 	is_deprecated := p.attr == 'deprecated'
 	is_pub := p.tok.kind == .key_pub
@@ -202,9 +207,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Args
 	args2, is_variadic := p.fn_args()
 	args << args2
-	for i, arg in args {
+	for arg in args {
 		if p.scope.known_var(arg.name) {
-			p.error('redefinition of parameter `$arg.name`')
+			p.error_with_pos('redefinition of parameter `$arg.name`', arg.pos)
 		}
 		p.scope.register(arg.name, ast.Var{
 			name: arg.name
@@ -214,19 +219,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_used: true
 			is_arg: true
 		})
-		// Do not allow `mut` with simple types
-		// TODO move to checker?
-		if arg.is_mut {
-			if i == 0 && is_method {
-				continue
-			}
-			sym := p.table.get_type_symbol(arg.typ)
-			if sym.kind !in [.array, .struct_, .map, .placeholder] && arg.typ != table.t_type &&
-				!arg.typ.is_ptr() {
-				p.error('mutable arguments are only allowed for arrays, maps, and structs\n' +
-					'return values instead: `fn foo(n mut int) {` => `fn foo(n int) int {`')
-			}
-		}
 	}
 	mut end_pos := p.prev_tok.position()
 	// Return type
@@ -273,17 +265,19 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		})
 	}
 	// Body
+	p.cur_fn_name = name
 	mut stmts := []ast.Stmt{}
 	no_body := p.tok.kind != .lcbr
 	body_start_pos := p.peek_tok.position()
 	if p.tok.kind == .lcbr {
-		stmts = p.parse_block_no_scope()
+		stmts = p.parse_block_no_scope(true)
 	}
 	p.close_scope()
 	p.attr = ''
 	p.attr_ctdefine = ''
 	return ast.FnDecl{
 		name: name
+		mod: p.mod
 		stmts: stmts
 		return_type: return_type
 		args: args
@@ -330,7 +324,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	mut stmts := []ast.Stmt{}
 	no_body := p.tok.kind != .lcbr
 	if p.tok.kind == .lcbr {
-		stmts = p.parse_block_no_scope()
+		stmts = p.parse_block_no_scope(false)
 	}
 	p.close_scope()
 	mut func := table.Fn{
@@ -346,6 +340,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	return ast.AnonFn{
 		decl: ast.FnDecl{
 			name: name
+			mod: p.mod
 			stmts: stmts
 			return_type: return_type
 			args: args
@@ -360,13 +355,13 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	}
 }
 
-// fn decl
+// part of fn declaration
 fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 	p.check(.lpar)
 	mut args := []table.Arg{}
 	mut is_variadic := false
 	// `int, int, string` (no names, just types)
-	types_only := p.tok.kind in [.amp, .and] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) ||
+	types_only := p.tok.kind in [.amp, .ellipsis] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) ||
 		p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
 	if types_only {
@@ -382,8 +377,12 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 				p.next()
 				is_variadic = true
 			}
+			pos := p.tok.position()
 			mut arg_type := p.parse_type()
-			if is_mut && arg_type != table.t_type {
+			if is_mut {
+				if arg_type != table.t_type {
+					p.check_fn_mutable_arguments(arg_type, pos)
+				}
 				// if arg_type.is_ptr() {
 				// p.error('cannot mut')
 				// }
@@ -395,11 +394,13 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			}
 			if p.tok.kind == .comma {
 				if is_variadic {
-					p.error('cannot use ...(variadic) with non-final parameter no $arg_no')
+					p.error_with_pos('cannot use ...(variadic) with non-final parameter no $arg_no',
+						pos)
 				}
 				p.next()
 			}
 			args << table.Arg{
+				pos: pos
 				name: arg_name
 				is_mut: is_mut
 				typ: arg_type
@@ -412,40 +413,45 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 			if is_mut {
 				p.next()
 			}
+			mut arg_pos := [p.tok.position()]
 			mut arg_names := [p.check_name()]
 			// `a, b, c int`
 			for p.tok.kind == .comma {
 				p.next()
+				arg_pos << p.tok.position()
 				arg_names << p.check_name()
 			}
 			if p.tok.kind == .key_mut {
 				// TODO remove old syntax
+				p.warn_with_pos('use `mut f Foo` instead of `f mut Foo`', p.tok.position())
 				is_mut = true
 			}
 			if p.tok.kind == .ellipsis {
 				p.next()
 				is_variadic = true
 			}
+			pos := p.tok.position()
 			mut typ := p.parse_type()
-			if is_mut && typ != table.t_type {
-				if typ.is_ptr() {
-					// name := p.table.get_type_name(typ)
-					// p.warn('`$name` is already a reference, it cannot be marked as `mut`')
+			if is_mut {
+				if typ != table.t_type {
+					p.check_fn_mutable_arguments(typ, pos)
 				}
 				typ = typ.set_nr_muls(1)
 			}
 			if is_variadic {
 				typ = typ.set_flag(.variadic)
 			}
-			for arg_name in arg_names {
+			for i, arg_name in arg_names {
 				args << table.Arg{
+					pos: arg_pos[i]
 					name: arg_name
 					is_mut: is_mut
 					typ: typ
 				}
 				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
 				if is_variadic && p.tok.kind == .comma {
-					p.error('cannot use ...(variadic) with non-final parameter $arg_name')
+					p.error_with_pos('cannot use ...(variadic) with non-final parameter $arg_name',
+						arg_pos[i])
 				}
 			}
 			if p.tok.kind != .rpar {
@@ -459,6 +465,15 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool) {
 
 fn (p &Parser) fileis(s string) bool {
 	return p.file_name.contains(s)
+}
+
+fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position) {
+	sym := p.table.get_type_symbol(typ)
+	if sym.kind !in [.array, .struct_, .map, .placeholder] && !typ.is_ptr() {
+		p.error_with_pos('mutable arguments are only allowed for arrays, maps, and structs\n' +
+			'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`',
+			pos)
+	}
 }
 
 fn (mut p Parser) fn_redefinition_error(name string) {

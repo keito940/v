@@ -66,17 +66,22 @@ you can do in V.
 		<td><a href='#writing-documentation'>Writing documentation</a></td>
 		</tr>
 	<tr>
+		<td><a href='#profiling'>Profiling</a></td>
 		<td><a href='#calling-c-functions-from-v'>Calling C functions from V</a></td>
 		<td><a href='#conditional-compilation'>Conditional compilation</a></td>
+		<td><a href='#compile-time-pseudo-variables'>Compile time pseudo variables</a></td>
 		<td><a href='#reflection-via-codegen'>Reflection via codegen</a></td>
 		<td><a href='#limited-operator-overloading'>Limited operator overloading</a></td>
+	</tr>
+	<tr>
 		<td><a href='#inline-assembly'>Inline assembly</a></td>
 		<td><a href='#translating-cc-to-v'>Translating C/C++ to V</a></td>
-		</tr>
-	<tr>
 		<td><a href='#hot-code-reloading'>Hot code reloading</a></td>
 		<td><a href='#cross-compilation'>Cross compilation</a></td>
 		<td><a href='#cross-platform-shell-scripts-in-v'>Cross-platform shell scripts in V</a></td>
+		<td><a href='#attributes'>Attributes</a></td>
+	</tr>
+	<tr>
 		<td><a href='#appendix-i-keywords'>Appendix I: Keywords</a></td>
 		<td><a href='#appendix-ii-operators'>Appendix II: Operators</a></td>
 	</tr>
@@ -281,8 +286,7 @@ f32 f64
 
 any_int, any_float // internal intermediate types of number literals
 
-byteptr // these two are mostly used for C interop
-voidptr
+byteptr, voidptr, charptr, size_t // these are mostly used for C interoperability
 
 any // similar to C's void* and Go's interface{}
 ```
@@ -1416,7 +1420,7 @@ V's ORM provides a number of benefits:
 
 - One syntax for all SQL dialects. Migrating between databases becomes much easier.
 - Queries are constructed using V's syntax. There's no need to learn another syntax.
-- Safety. All queries are automatically santised to prevent SQL injection.
+- Safety. All queries are automatically sanitised to prevent SQL injection.
 - Compile time checks. This prevents typos which can only be caught during runtime.
 - Readability and simplicity. You don't need to manually parse the results of a query and then manually construct objects from the parsed results.
 
@@ -1680,6 +1684,30 @@ vm := vmod.decode( @VMOD_FILE ) or { panic(err) }
 eprintln('$vm.name $vm.version\n $vm.description')
 ```
 
+## Performance tuning
+
+The generated C code is usually fast enough, when you compile your code 
+with `-prod`. There are some situations though, where you may want to give 
+additional hints to the C compiler, so that it can further optimize some 
+blocks of code.
+
+NB: These are *rarely* needed, and should not be used, unless you
+*profile your code*, and then see that there are significant benefits for them.
+To cite gcc's documentation: "programmers are notoriously bad at predicting
+how their programs actually perform".
+
+`[inline]` - you can tag functions with `[inline]`, so the C compiler will
+try to inline them, which in some cases, may be beneficial for peformance, 
+but may impact the size of your executable.
+
+`if _likely_(bool expression) {` this hints the C compiler, that the passed 
+boolean expression is very likely to be true, so it can generate assembly 
+code, with less chance of branch misprediction. In the JS backend,
+that does nothing.
+
+`if _unlikely_(bool expression) {` similar to `_likely_(x)`, but it hints that
+the boolean expression is highly improbable. In the JS backend, that does nothing.
+
 ## Reflection via codegen
 
 Having built-in JSON support is nice, but V also allows you to create efficient
@@ -1909,6 +1937,45 @@ Or just run it more like a traditional Bash script:
 On Unix-like platforms, the file can be run directly after making it executable using `chmod +x`:
 `./deploy.vsh`
 
+## Attributes
+
+V has several attributes that modify the behavior of functions and structs.
+
+An attribute is specifed inside `[]` right before the function/struct declaration and applies only to the following definition. 
+
+```v
+// Calling this function will result in a deprecation warning
+[deprecated]
+fn old_function() {}
+
+// This function's calls will be inlined.
+[inline]
+fn inlined_function() {}
+
+// The following struct can only be used as a reference (`&Window`) and allocated on the heap.
+[ref_only]
+struct Window {
+}
+
+// V will not generate this function and all its calls if the provided flag is false.
+// To use a flag, use `v -d flag`
+[if debug]
+fn foo() { }
+
+fn bar() {
+   foo() // will not be called if `-d debug` is not passed
+}
+
+// For C interop only, tells V that the following struct is defined with `typedef struct` in C
+[typedef] 
+struct C.Foo { }
+
+// Declare a function with WINAPI
+[windows_stdcall]
+fn C.WinFunction()
+```
+
+
 ## Appendix I: Keywords
 
 V has 23 keywords:
@@ -1936,7 +2003,6 @@ pub
 return
 struct
 type
-var
 ```
 
 ## Appendix II: Operators

@@ -311,7 +311,7 @@ fn test_fixed() {
 	assert nums2[c_n - 1] == 0
 }
 
-fn modify(numbers mut []int) {
+fn modify(mut numbers []int) {
 	numbers[0] = 777
 }
 
@@ -328,13 +328,13 @@ fn test_mut_slice() {
 	*/
 }
 
-fn double_up(a mut []int) {
+fn double_up(mut a []int) {
 	for i := 0; i < a.len; i++ {
 		a[i] = a[i]*2
 	}
 }
 
-fn double_up_v2(a mut []int) {
+fn double_up_v2(mut a []int) {
 	for i, _ in a {
 		a[i] = a[i]*2 // or val*2, doesn't matter
 	}
@@ -529,6 +529,21 @@ fn test_filter() {
 	//assert arr.filter(arr % 2).len == 5
 }
 
+fn test_anon_fn_filter() {
+	filter_num := fn (i int) bool {
+		return i % 2 == 0
+	}
+	assert [1,2,3,4,5].filter(filter_num) == [2,4]
+}
+
+fn test_anon_fn_arg_filter() {
+	a := [1,2,3,4].filter(fn (i int) bool {
+		return i % 2 == 0
+	})
+
+	assert a == [2,4]
+}
+
 fn map_test_helper_1(i int) int {
 	return i * i
 }
@@ -589,11 +604,38 @@ fn test_map() {
 	assert strs == ['v', 'is', 'awesome']
 }
 
+fn test_anon_fn_map() {
+	add_num := fn (i int) int {
+		return i + 1
+	}
+	assert [1,2,3].map(add_num) == [2,3,4]
+}
+
+fn test_mutli_anon_fn_map() {
+	a := [1,2,3].map(fn (i int) int {
+		return i + 1
+	})
+
+	b := [1,2,3].map(fn (i int) int {
+		return i + 2
+	})
+	assert a == [2,3,4]
+	assert b == [3,4,5]
+}
+
+fn test_anon_fn_arg_map() {
+	a := [1,2,3].map(fn (i int) int {
+		return i + 1
+	})
+
+	assert a == [2,3,4]
+}
+
 fn test_array_str() {
 	numbers := [1, 2, 3]
 	assert numbers == [1,2,3]
 	numbers2 := [numbers, [4, 5, 6]] // dup str() bug
-	_=numbers2
+	_ = numbers2
 	assert true
 	assert numbers.str() == '[1, 2, 3]'
 	// QTODO
@@ -773,4 +815,14 @@ fn test_array_with_cap() {
 	a5 := []int{len:1, cap:10}
 	assert a5.len == 1
 	assert a5.cap == 10
+}
+
+fn test_mutli_array_index() {
+	mut a := [][]int{len:2, init: []int{len:3, init:0}}
+	a[0][0] = 1
+	assert '$a' == '[[1, 0, 0], [0, 0, 0]]'
+
+	mut b := [[0].repeat(3)].repeat(2)
+	b[0][0] = 1
+	assert '$b' == '[[1, 0, 0], [0, 0, 0]]'
 }

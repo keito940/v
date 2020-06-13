@@ -12,11 +12,11 @@ fn main() {
 	println('Generating $sample_size strings between $min_str_len - $max_str_len chars long...')
 	mut bytepile := []byte{}
 	for _ in 0 .. sample_size * max_str_len {
-		bytepile << byte(40 + rand.next(125 - 40))
+		bytepile << byte(rand.int_in_range(40, 125))
 	}
 	mut str_lens := []int{}
 	for _ in 0 .. sample_size {
-		str_lens << min_str_len + rand.next(max_str_len - min_str_len)
+		str_lens << rand.int_in_range(min_str_len, max_str_len)
 	}
 	println('Hashing each of the generated strings...')
 	t0 := time.ticks()
@@ -24,7 +24,7 @@ fn main() {
 	for len in str_lens {
 		end_pos := start_pos + len
 		str := string(bytepile[start_pos..end_pos],len)
-		_ = wyhash.wyhash_c(&str.str, u64(str.len), 1)
+		wyhash.wyhash_c(&str.str, u64(str.len), 1)
 		start_pos = end_pos
 	}
 	t1 := time.ticks()
@@ -34,7 +34,7 @@ fn main() {
 	for len in str_lens {
 		end_pos := start_pos + len
 		str := string(bytepile[start_pos..end_pos],len)
-		_ = wyhash.sum64_string(str, 1)
+		wyhash.sum64_string(str, 1)
 		start_pos = end_pos
 	}
 	t2 := time.ticks()
@@ -44,7 +44,7 @@ fn main() {
 	for len in str_lens {
 		end_pos := start_pos + len
 		str := string(bytepile[start_pos..end_pos],len)
-		_ = fnv1a.sum64_string(str)
+		fnv1a.sum64_string(str)
 		start_pos = end_pos
 	}
 	t3 := time.ticks()

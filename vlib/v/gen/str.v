@@ -25,6 +25,7 @@ void _STR_PRINT_ARG(const char *fmt, char** refbufp, int *nbytes, int *memsize, 
 		*memsize += (*memsize + *memsize) / 3 + guess;
 		*refbufp = (char*)realloc((void*)*refbufp, *memsize);
 	}
+	va_end(args);
 }
 
 string _STR(const char *fmt, int nfmts, ...) {
@@ -96,6 +97,7 @@ string _STR_TMP(const char *fmt, ...) {
 	va_start(argptr, fmt);
 	vsprintf((char *)g_str_buf, fmt, argptr);
 	va_end(argptr);
+
 #ifdef DEBUG_ALLOC
 	//puts('_STR_TMP:');
 	//puts(g_str_buf);
@@ -103,6 +105,7 @@ string _STR_TMP(const char *fmt, ...) {
 	string res = tos(g_str_buf,  len);
 	res.is_lit = true;
 	return res;
+
 } // endof _STR_TMP
 
 ")
