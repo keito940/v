@@ -3,9 +3,25 @@
 // that can be found in the LICENSE file.
 module ast
 
-// These methods are used only by vfmt, vdoc, and for debugging.
 import v.table
 import strings
+
+pub fn (node &FnDecl) modname() string {
+	if node.mod != '' {
+		return node.mod
+	}
+	mut pamod := node.name.all_before_last('.')
+	if pamod == node.name.after('.') {
+		pamod = if node.is_builtin {
+			'builtin'
+		} else {
+			'main'
+		}
+	}
+	return pamod
+}
+
+// These methods are used only by vfmt, vdoc, and for debugging.
 
 pub fn (node &FnDecl) str(t &table.Table) string {
 	mut f := strings.new_builder(30)
@@ -161,6 +177,9 @@ pub fn (x Expr) str() string {
 		}
 		TypeOf {
 			return 'typeof(${it.expr.str()})'
+		}
+		Likely {
+			return '_likely_(${it.expr.str()})'
 		}
 		else {
 			return '[unhandled expr type ${typeof(x)}]'

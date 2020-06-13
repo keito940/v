@@ -11,9 +11,11 @@ pub:
 	// name_idx int // name table index for O(1) lookup
 	pos     int // the position of the token in scanner text
 	len     int // length of the literal
+	tidx    int // the index of the token
 }
 
 pub enum Kind {
+	unknown
 	eof
 	name // user
 	number // 123
@@ -110,6 +112,8 @@ pub enum Kind {
 	key_return
 	key_select
 	key_sizeof
+	key_likely
+	key_unlikely
 	key_offsetof
 	key_struct
 	key_switch
@@ -133,8 +137,8 @@ const (
 )
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return
-fn build_keys() map[string]int {
-	mut res := map[string]int
+fn build_keys() map[string]Kind {
+	mut res := map[string]Kind
 	for t in int(Kind.keyword_beg) + 1 .. int(Kind.keyword_end) {
 		key := token_str[t]
 		res[key] = t
@@ -145,6 +149,7 @@ fn build_keys() map[string]int {
 // TODO remove once we have `enum Kind { name('name') if('if') ... }`
 fn build_token_str() []string {
 	mut s := [''].repeat(nr_tokens)
+	s[Kind.unknown] = 'unknown'
 	s[Kind.eof] = 'eof'
 	s[Kind.name] = 'name'
 	s[Kind.number] = 'number'
@@ -215,6 +220,8 @@ fn build_token_str() []string {
 	s[Kind.key_return] = 'return'
 	s[Kind.key_module] = 'module'
 	s[Kind.key_sizeof] = 'sizeof'
+	s[Kind.key_likely] = '_likely_'
+	s[Kind.key_unlikely] = '_unlikely_'
 	s[Kind.key_go] = 'go'
 	s[Kind.key_goto] = 'goto'
 	s[Kind.key_const] = 'const'

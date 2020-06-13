@@ -33,7 +33,7 @@ pub enum Backend {
 }
 
 const (
-	list_of_flags_with_param            = [
+	list_of_flags_with_param = [
 		'o'
 		'output', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os', 'arch', 'csource'
 		'cf', 'cflags', 'path']
@@ -103,7 +103,6 @@ pub mut:
 	compile_defines     []string // just ['vfmt']
 	compile_defines_all []string // contains both: ['vfmt','another']
 
-	mod                 string
 	run_args            []string // `v run x.v 1 2 3` => `1 2 3`
 	printfn_list        []string // a list of generated function names, whose source should be shown, for debugging
 	print_v_files       bool     // when true, just print the list of all parsed .v files then stop.
@@ -112,6 +111,7 @@ pub mut:
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
 	is_parallel bool
 	error_limit int
+	is_vweb bool // skip _ var warning in templates
 }
 
 pub fn parse_args(args []string) (&Preferences, string) {
@@ -244,10 +244,6 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-o' {
 				res.out_name = cmdline.option(current_args, '-o', '')
-				if res.out_name.ends_with('.v') {
-					eprintln('Cannot save output binary in a .v file.')
-					exit(1)
-				}
 				i++
 			}
 			'-b' {
@@ -290,6 +286,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 		}
 	}
+	if command != 'doc' && res.out_name.ends_with('.v') {
+		eprintln('Cannot save output binary in a .v file.')
+		exit(1)
+	}
 	if command.ends_with('.v') || os.exists(command) {
 		res.path = command
 	} else if command == 'run' {
@@ -327,7 +327,7 @@ pub fn backend_from_string(s string) ?Backend {
 	}
 }
 
-fn parse_define(prefs mut Preferences, define string) {
+fn parse_define(mut prefs Preferences, define string) {
     define_parts := define.split('=')
     if define_parts.len == 1 {
         prefs.compile_defines << define

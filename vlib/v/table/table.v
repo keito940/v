@@ -264,7 +264,7 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 }
 
 pub fn (t &Table) known_type(name string) bool {
-	_ = t.find_type(name) or {
+	t.find_type(name) or {
 		return false
 	}
 	return true
@@ -274,7 +274,7 @@ pub fn (t &Table) known_type(name string) bool {
 pub fn (t &Table) array_name(elem_type Type, nr_dims int) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
 	return 'array_${elem_type_sym.name}' + if elem_type.is_ptr() {
-		'_ptr'
+		'_ptr'.repeat(elem_type.nr_muls())
 	} else {
 		''
 	} + if nr_dims > 1 {
@@ -417,9 +417,9 @@ pub fn (mut t Table) add_placeholder_type(name string) int {
 [inline]
 pub fn (t &Table) value_type(typ Type) Type {
 	typ_sym := t.get_type_symbol(typ)
-	if typ.flag_is(.variadic) {
+	if typ.has_flag(.variadic) {
 		// ...string => string
-		return typ.set_flag(.unset)
+		return typ.clear_flag(.variadic)
 	}
 	if typ_sym.kind == .array {
 		// Check index type

@@ -118,8 +118,9 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 			out += '\n\t/* module exports */'
 		}
 		out += '\n\treturn {'
-		for pub_var in g.namespaces_pub[node.name] {
-			out += '\n\t\t$pub_var,'
+		for i, pub_var in g.namespaces_pub[node.name] {
+			out += '\n\t\t$pub_var'
+			if i < g.namespaces_pub[node.name].len - 1 { out += ',' }
 		}
 		if g.namespaces_pub[node.name].len > 0 { out += '\n\t' }
 		out += '};'
@@ -626,6 +627,11 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			// skip: JS has no types
 			// TODO maybe?
 		}
+		ast.Likely {
+			g.write('(')
+			g.expr(it.expr)
+			g.write(')')
+		}
 		ast.TypeOf {
 			g.gen_typeof_expr(it)
 			// TODO: Should this print the V type or the JS type?
@@ -671,7 +677,11 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 		// multi return
 		g.write('const [')
 		for i, ident in it.left {
-			g.write(g.js_name(ident.name))
+			if ident.name in ['', '_'] {
+				g.write('')
+			} else {
+				g.write(g.js_name(ident.name))
+			}
 			if i < it.left.len - 1 {
 				g.write(', ')
 			}
@@ -683,6 +693,16 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 		// `a := 1` | `a,b := 1,2`
 		for i, ident in it.left {
 			val := it.right[i]
+
+			if ident.kind == .blank_ident || ident.name in ['', '_'] {
+				tmp_var := g.new_tmp_var()
+				// TODO: Can the tmp_var declaration be omitted?
+				g.write('const $tmp_var = ')
+				g.expr(val)
+				g.writeln(';')
+				continue
+			}
+
 			ident_var_info := ident.var_info()
 			mut styp := g.typ(ident_var_info.typ)
 
@@ -897,7 +917,9 @@ fn (mut g JsGen) gen_for_c_stmt(it ast.ForCStmt) {
 fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 	if it.is_range {
 		// `for x in 1..10 {`
-		i := it.val_var
+		mut i := it.val_var
+		if i in ['', '_'] { i = g.new_tmp_var() }
+
 		g.inside_loop = true
 		g.write('for (let $i = ')
 		g.expr(it.cond)
@@ -907,41 +929,32 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		g.inside_loop = false
 		g.stmts(it.stmts)
 		g.writeln('}')
-	} else if it.kind == .array || it.cond_type.flag_is(.variadic) {
+	} else if it.kind in [.array, .string] || it.cond_type.has_flag(.variadic) {
 		// `for num in nums {`
-		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
+		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
+		val := if it.val_var in ['', '_'] { '' } else { it.val_var }
 		// styp := g.typ(it.val_type)
 		g.inside_loop = true
 		g.write('for (let $i = 0; $i < ')
 		g.expr(it.cond)
 		g.writeln('.length; ++$i) {')
 		g.inside_loop = false
-		g.write('\tlet $it.val_var = ')
-		g.expr(it.cond)
-		g.writeln('[$i];')
+		if val !in ['', '_'] {
+			g.write('\tconst $val = ')
+			g.expr(it.cond)
+			g.writeln('[$i];')
+		}
 		g.stmts(it.stmts)
 		g.writeln('}')
 	} else if it.kind == .map {
 		// `for key, val in map[string]int {`
 		// key_styp := g.typ(it.key_type)
 		// val_styp := g.typ(it.val_type)
-		key := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
-		g.write('for (let [$key, $it.val_var] of ')
+		key := if it.key_var in ['', '_'] { '' } else { it.key_var }
+		val := if it.val_var in ['', '_'] { '' } else { it.val_var }
+		g.write('for (let [$key, $val] of ')
 		g.expr(it.cond)
 		g.writeln(') {')
-		g.stmts(it.stmts)
-		g.writeln('}')
-	} else if it.kind == .string {
-		// `for x in 'hello' {`
-		i := if it.key_var == '' { g.new_tmp_var() } else { it.key_var }
-		g.inside_loop = true
-		g.write('for (let $i = 0; $i < ')
-		g.expr(it.cond)
-		g.writeln('.length; ++$i) {')
-		g.inside_loop = false
-		g.write('\tlet $it.val_var = ')
-		g.expr(it.cond)
-		g.writeln('[$i];')
 		g.stmts(it.stmts)
 		g.writeln('}')
 	}
@@ -1080,6 +1093,15 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 }
 
 fn (mut g JsGen) gen_assign_expr(it ast.AssignExpr) {
+	if it.left_type == table.void_type && it.op == .assign {
+		// _ = 1
+		tmp_var := g.new_tmp_var()
+		g.write('const $tmp_var = ')
+		g.expr(it.val)
+		return
+	}
+
+	// NB: The expr has to go *before* inside_map_set as it's defined there
 	g.expr(it.left)
 	if g.inside_map_set && it.op == .assign {
 		g.inside_map_set = false
@@ -1100,9 +1122,41 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		name = g.js_name(it.name)
 	}
 	g.expr(it.left)
-	if it.is_method {
-		// example: foo.bar.baz()
+	if it.is_method { // foo.bar.baz()
+		sym := g.table.get_type_symbol(it.receiver_type)
 		g.write('.')
+
+		if sym.kind == .array && it.name in ['map', 'filter'] {
+			// Prevent 'it' from getting shadowed inside the match
+			node := it
+			g.write(it.name)
+			g.write('(')
+			match node.args[0].expr {
+				ast.AnonFn {
+					g.gen_fn_decl(it.decl)
+						g.write(')')
+						return
+					}
+				ast.Ident {
+					if it.kind == .function {
+						g.write(g.js_name(it.name))
+						g.write(')')
+						return
+					} else if it.kind == .variable {
+						v_sym := g.table.get_type_symbol(it.var_info().typ)
+						if v_sym.kind == .function {
+							g.write(g.js_name(it.name))
+							g.write(')')
+							return
+						}
+					}
+				} else {}
+			}
+			g.write('it => ')
+			g.expr(node.args[0].expr)
+			g.write(')')
+			return
+		}
 	} else {
 		if name in builtin_globals {
 			g.write('builtin.')
@@ -1119,7 +1173,10 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 }
 
 fn (mut g JsGen) gen_ident(node ast.Ident) {
-	name := g.js_name(node.name)
+	mut name := g.js_name(node.name)
+	if node.kind == .blank_ident || name in ['', '_']{
+		name = g.new_tmp_var()
+	}
 	// TODO `is`
 	// TODO handle optionals
 	g.write(name)
@@ -1302,10 +1359,9 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 }
 
 fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
-	// TODO Implement `tos3`
-	g.write('tos3(`')
+	g.write('`')
 	for i, val in it.vals {
-		escaped_val := val.replace_each(['`', '\`', '\r\n', '\n'])
+		escaped_val := val.replace('`', '\\`')
 		g.write(escaped_val)
 		if i >= it.exprs.len {
 			continue
@@ -1314,39 +1370,19 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 		sfmt := it.expr_fmts[i]
 		g.write('\${')
 		if sfmt.len > 0 {
-			fspec := sfmt[sfmt.len - 1]
-			if fspec == `s` && it.expr_types[i] == table.string_type {
-				g.expr(expr)
-				g.write('.str')
-			} else {
-				g.expr(expr)
-			}
-		} else if it.expr_types[i] == table.string_type {
-			// `name.str`
+			// TODO: Handle formatting
 			g.expr(expr)
-			g.write('.str')
-		} else if it.expr_types[i] == table.bool_type {
-			// `expr ? "true" : "false"`
-			g.expr(expr)
-			g.write(' ? "true" : "false"')
 		} else {
 			sym := g.table.get_type_symbol(it.expr_types[i])
 
-			match sym.kind {
-				.struct_ {
-					g.expr(expr)
-					if sym.has_method('str') {
-						g.write('.str()')
-					}
-				}
-				else {
-					g.expr(expr)
-				}
+			g.expr(expr)
+			if sym.kind == .struct_ && sym.has_method('str') {
+				g.write('.str()')
 			}
 		}
 		g.write('}')
 	}
-	g.write('`)')
+	g.write('`')
 }
 
 fn (mut g JsGen) gen_struct_init(it ast.StructInit) {

@@ -84,7 +84,7 @@ fn encrypt_block_generic(xk []u32, dst, src []byte) {
 	s2 ^= xk[k+2]
 	s3 ^= xk[k+3]
 
-	_ = dst[15] // early bounds check
+	_ := dst[15] // early bounds check
 	binary.big_endian_put_u32(mut dst[..4], s0)
 	binary.big_endian_put_u32(mut dst.slice(4, 8), s1)
 	binary.big_endian_put_u32(mut dst.slice(8, 12), s2)
@@ -156,7 +156,7 @@ fn rotw(w u32) u32 { return (w<<8) | (w>>24) }
 
 // Key expansion algorithm. See FIPS-197, Figure 11.
 // Their rcon[i] is our powx[i-1] << 24.
-fn expand_key_generic(key []byte, enc mut []u32, dec mut []u32) {
+fn expand_key_generic(key []byte, mut enc []u32, mut dec []u32) {
 	// Encryption key setup.
 	mut i := 0
 	nk := key.len / 4

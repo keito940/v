@@ -8,19 +8,20 @@ import v.ast
 import v.pref
 import v.vmod
 import v.table
+import vweb.tmpl
 
 const (
 	supported_platforms = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
 		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
 )
 
-fn (mut p Parser)resolve_vroot(flag string) string {
+fn (mut p Parser) resolve_vroot(flag string) string {
 	mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_folder(p.file_name_dir)
 	if vmod_file_location.vmod_file.len == 0 {
 		// There was no actual v.mod file found.
 		p.error('To use @VROOT, you need' + ' to have a "v.mod" file in ${p.file_name_dir},' +
-		' or in one of its parent folders.')
+			' or in one of its parent folders.')
 	}
 	vmod_path := vmod_file_location.vmod_folder
 	return flag.replace('@VROOT', os.real_path(vmod_path))
@@ -83,7 +84,61 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	p.check(.name)
 	p.check(.lpar)
 	p.check(.rpar)
-	return ast.ComptimeCall{}
+	// Compile vweb html template to V code, parse that V code and embed the resulting V function
+	// that returns an html string.
+	html_name := '${p.cur_fn_name}.html'
+	// Looking next to the vweb program
+	dir := os.dir(p.scanner.file_path)
+	mut path := os.join_path(dir, html_name)
+	if !os.exists(path) {
+		// can be in `templates/`
+		path = os.join_path(dir, 'templates', html_name)
+		if !os.exists(path) {
+			p.error('vweb HTML template "$html_name" not found')
+		}
+		// println('path is now "$path"')
+	}
+	// if p.pref.is_verbose {
+	println('>>> compiling vweb HTML template "$path"')
+	// }
+	v_code := tmpl.compile_file(path, p.cur_fn_name)
+	mut scope := &ast.Scope{
+		start_pos: 0
+		parent: p.global_scope
+	}
+	file := parse_text(v_code, p.table, p.pref, scope, p.global_scope)
+	if p.pref.is_verbose {
+		println('\n\n')
+		println('>>> vweb template for ${path}:')
+		println(v_code)
+		println('>>> end of vweb template END')
+		println('\n\n')
+	}
+	// copy vars from current fn scope into vweb_tmpl scope
+	for stmt in file.stmts {
+		if stmt is ast.FnDecl {
+			fn_decl := stmt as ast.FnDecl
+			if fn_decl.name == 'vweb_tmpl_$p.cur_fn_name' {
+				tmpl_scope := file.scope.innermost(fn_decl.body_pos.pos)
+				for _, obj in p.scope.objects {
+					if obj is ast.Var {
+						mut v := obj as ast.Var
+						tmpl_scope.register(v.name, *v)
+						// TODO: this is yuck, track idents in parser
+						// or defer unused var logic to checker
+						if v_code.contains(v.name) {
+							v.is_used = true
+						}
+					}
+				}
+				break
+			}
+		}
+	}
+	return ast.ComptimeCall{
+		is_vweb: true
+		vweb_tmpl: file
+	}
 }
 
 fn (mut p Parser) comp_if() ast.Stmt {
@@ -220,7 +275,6 @@ fn os_from_string(os string) pref.OS {
 fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCall {
 	p.check(.dollar)
 	method_name := p.check_name()
-	_ = method_name
 	/*
 	mut j := 0
 	sym := p.table.get_type_symbol(typ)
@@ -256,6 +310,6 @@ fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCall {
 	}
 	return ast.ComptimeCall{
 		left: left
-		name: method_name
+		method_name: method_name
 	}
 }

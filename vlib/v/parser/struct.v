@@ -9,6 +9,7 @@ import v.token
 import v.util
 
 fn (mut p Parser) struct_decl() ast.StructDecl {
+	p.top_level_statement_start()
 	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -162,6 +163,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			}
 			// println('struct field $ti.name $field_name')
 		}
+		p.top_level_statement_end()
 		p.check(.rcbr)
 	}
 	if language == .c {
@@ -277,6 +279,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 }
 
 fn (mut p Parser) interface_decl() ast.InterfaceDecl {
+	p.top_level_statement_start()
 	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -316,6 +319,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		args << args2
 		mut method := ast.FnDecl{
 			name: name
+			mod: p.mod
 			args: args
 			file: p.file_name
 			return_type: table.void_type
@@ -334,6 +338,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			is_pub: true
 		})
 	}
+	p.top_level_statement_end()
 	p.check(.rcbr)
 	return ast.InterfaceDecl{
 		name: interface_name

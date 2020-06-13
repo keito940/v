@@ -1,8 +1,8 @@
-module parser
-
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+module parser
+
 import v.table
 
 pub fn (mut p Parser) parse_array_type() table.Type {
@@ -111,12 +111,8 @@ pub fn (mut p Parser) parse_type() table.Type {
 		p.next()
 	}
 	// &Type
-	for p.tok.kind in [.and, .amp] {
-		if p.tok.kind == .and {
-			nr_muls += 2
-		} else {
-			nr_muls++
-		}
+	for p.tok.kind == .amp {
+		nr_muls++
 		p.next()
 	}
 

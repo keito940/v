@@ -1183,7 +1183,9 @@ pub fn (c byte) is_letter() bool {
 }
 
 pub fn (s &string) free() {
-	if s.is_lit {return}
+	if s.is_lit || s.len == 0 {
+		return
+	}
 	free(s.str)
 }
 
@@ -1342,6 +1344,11 @@ pub fn (s string) repeat(count int) string {
 	}
 	ret[s.len * count] = 0
 	return string(ret)
+}
+
+pub fn (s string) fields() []string {
+	// TODO do this in a better way
+	return s.replace('\t', ' ').split(' ')
 }
 
 // Allows multi-line strings to be formatted in a way that removes white-space

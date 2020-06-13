@@ -14,12 +14,12 @@ import os
 import runtime
 import time
 
-// import sync
 pub struct Parser {
 	file_name         string // "/home/user/hello.v"
 	file_name_dir     string // "/home/user"
 mut:
 	scanner           &scanner.Scanner
+	comments_mode     scanner.CommentsMode = .skip_comments // see comment in parse_file
 	tok               token.Token
 	prev_tok          token.Token
 	peek_tok          token.Token
@@ -32,6 +32,7 @@ mut:
 	inside_or_expr    bool
 	inside_for        bool
 	inside_fn         bool
+	inside_str_interp bool
 	pref              &pref.Preferences
 	builtin_mod       bool // are we in the `builtin` module?
 	mod               string // current module name
@@ -53,6 +54,7 @@ mut:
 	expecting_type    bool // `is Type`, expecting type
 	errors            []errors.Error
 	warnings          []errors.Warning
+	cur_fn_name       string
 }
 
 // for tests
@@ -73,46 +75,76 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt()
 }
 
+pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, scope, global_scope &ast.Scope) ast.File {
+	s := scanner.new_scanner(text, .skip_comments)
+	mut p := Parser{
+		scanner: s
+		table: b_table
+		pref: pref
+		scope: scope
+		errors: []errors.Error{}
+		warnings: []errors.Warning{}
+		global_scope: global_scope
+	}
+	return p.parse()
+}
+
 pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
+	// NB: when comments_mode == .toplevel_comments,
+	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
+	// all the tricky inner comments. This is needed because we do not have a good general solution
+	// for handling them, and should be removed when we do (the general solution is also needed for vfmt)
 	// println('parse_file("$path")')
 	// text := os.read_file(path) or {
 	// panic(err)
 	// }
-	mut stmts := []ast.Stmt{}
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, comments_mode)
+		comments_mode: comments_mode
 		table: b_table
 		file_name: path
 		file_name_dir: os.dir(path)
 		pref: pref
 		scope: &ast.Scope{
 			start_pos: 0
-			parent: 0
+			parent: global_scope
 		}
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
 		global_scope: global_scope
 	}
+	return p.parse()
+}
+
+fn (mut p Parser) parse() ast.File {
 	// comments_mode: comments_mode
 	p.init_parse_fns()
 	p.read_first_token()
+	mut stmts := []ast.Stmt{}
 	for p.tok.kind == .comment {
 		stmts << p.comment()
 	}
 	// module
-	mut mstmt := ast.Stmt{}
 	module_decl := p.module_decl()
-	mstmt = module_decl
-	stmts << mstmt
+	stmts << module_decl
 	// imports
-	for p.tok.kind == .key_import {
-		stmts << p.import_stmt()
+	for {
+		if p.tok.kind == .key_import {
+			stmts << p.import_stmt()
+			continue
+		}
+		if p.tok.kind == .comment {
+			stmts << p.comment()
+			continue
+		}
+		break
 	}
 	for {
 		if p.tok.kind == .eof {
 			if p.pref.is_script && !p.pref.is_test && p.mod == 'main' && !have_fn_main(stmts) {
 				stmts << ast.FnDecl{
 					name: 'main'
+					mod: p.mod
 					file: p.file_name
 					return_type: table.void_type
 				}
@@ -129,7 +161,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	p.scope.end_pos = p.tok.pos
 	//
 	return ast.File{
-		path: path
+		path: p.file_name
 		mod: module_decl
 		imports: p.ast_imports
 		stmts: stmts
@@ -212,7 +244,10 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 	return files
 }
 
-pub fn (p &Parser) init_parse_fns() {
+pub fn (mut p Parser) init_parse_fns() {
+	if p.comments_mode == .toplevel_comments {
+		p.scanner.scan_all_tokens_in_buffer()
+	}
 	// p.prefix_parse_fns = make(100, 100, sizeof(PrefixParseFn))
 	// p.prefix_parse_fns[token.Kind.name] = parse_name
 }
@@ -238,7 +273,7 @@ pub fn (mut p Parser) close_scope() {
 		for _, obj in p.scope.objects {
 			match obj {
 				ast.Var {
-					if !it.is_used && !it.name.starts_with('__') {
+					if !it.is_used && it.name[0] != `_` {
 						if p.pref.is_prod {
 							p.error_with_pos('unused variable: `$it.name`', it.pos)
 						} else {
@@ -264,13 +299,13 @@ pub fn (mut p Parser) close_scope() {
 pub fn (mut p Parser) parse_block() []ast.Stmt {
 	p.open_scope()
 	// println('parse block')
-	stmts := p.parse_block_no_scope()
+	stmts := p.parse_block_no_scope(false)
 	p.close_scope()
 	// println('nr exprs in block = $exprs.len')
 	return stmts
 }
 
-pub fn (mut p Parser) parse_block_no_scope() []ast.Stmt {
+pub fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	p.check(.lcbr)
 	mut stmts := []ast.Stmt{}
 	if p.tok.kind != .rcbr {
@@ -281,6 +316,9 @@ pub fn (mut p Parser) parse_block_no_scope() []ast.Stmt {
 				break
 			}
 		}
+	}
+	if is_top_level {
+		p.top_level_statement_end()
 	}
 	p.check(.rcbr)
 	return stmts
@@ -369,9 +407,14 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			}
 		}
 		.lsbr {
+			start_pos := p.tok.position()
 			attrs := p.attributes()
 			if attrs.len > 1 {
-				p.error('multiple attributes detected')
+				end_pos := p.tok.position()
+				p.error_with_pos('multiple attributes detected', start_pos.extend(end_pos))
+			} else if attrs.len == 0 {
+				end_pos := p.tok.position()
+				p.error_with_pos('attributes cannot be empty', start_pos.extend(end_pos))
 			}
 			return attrs[0]
 		}
@@ -421,6 +464,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				}
 				return ast.FnDecl{
 					name: 'main'
+					mod: p.mod
 					stmts: stmts
 					file: p.file_name
 					return_type: table.void_type
@@ -699,7 +743,12 @@ fn (mut p Parser) parse_multi_expr() ast.Stmt {
 	if p.tok.kind == .decl_assign || (p.tok.kind == .assign && collected.len > 1) {
 		mut idents := []ast.Ident{}
 		for c in collected {
-			idents << c as ast.Ident
+			match c {
+				ast.Ident { idents << it }
+				ast.SelectorExpr { p.error_with_pos('struct fields can only be declared during the initialization',
+						it.pos) }
+				else { p.error_with_pos('unexpected `${typeof(c)}`', c.position()) }
+			}
 		}
 		return p.partial_assign_stmt(idents)
 	} else if p.tok.kind.is_assign() {
@@ -759,19 +808,18 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 		if p.expr_mod.len > 0 {
 			name = '${p.expr_mod}.$name'
 		}
-		mut ident := ast.Ident{
+		return ast.Ident{
 			kind: .unresolved
 			name: name
 			language: language
 			mod: p.mod
 			pos: pos
-		}
-		ident.is_mut = is_mut
-		ident.info = ast.IdentVar{
 			is_mut: is_mut
-			is_static: is_static
+			info: ast.IdentVar{
+				is_mut: is_mut
+				is_static: is_static
+			}
 		}
-		return ident
 	} else {
 		p.error('unexpected token `$p.tok.lit`')
 	}
@@ -811,7 +859,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 	}
 	// Raw string (`s := r'hello \n ')
-	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string && p.prev_tok.kind != .str_dollar {
+	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string && !p.inside_str_interp {
 		return p.string_expr()
 	}
 	mut known_var := false
@@ -890,7 +938,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if &&
 		!p.inside_for {
 		return p.struct_init(false) // short_syntax: false
-	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var) {
+	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var && language ==
+		.v) {
 		// `Color.green`
 		mut enum_name := p.check_name()
 		if mod != '' {
@@ -998,7 +1047,12 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		// p.close_scope()
 		// }
 	}
+	// ! in mutable methods
+	if p.tok.kind == .not && p.peek_tok.kind == .lpar {
+		p.next()
+	}
 	// Method call
+	// TODO move to fn.v call_expr()
 	if p.tok.kind == .lpar {
 		p.next()
 		args := p.call_args()
@@ -1024,14 +1078,15 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 				is_used: true
 			})
 			or_kind = .block
-			or_stmts = p.parse_block_no_scope()
+			or_stmts = p.parse_block_no_scope(false)
 			p.close_scope()
 		}
+		// `foo()?`
 		if p.tok.kind == .question {
-			// `foo()?`
 			p.next()
 			or_kind = .propagate
 		}
+		//
 		end_pos := p.tok.position()
 		pos := token.Position{
 			line_nr: name_pos.line_nr
@@ -1106,6 +1161,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 	mut vals := []string{}
 	mut efmts := []string{}
 	// Handle $ interpolation
+	p.inside_str_interp = true
 	for p.tok.kind == .string {
 		vals << p.tok.lit
 		p.next()
@@ -1141,6 +1197,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		expr_fmts: efmts
 		pos: pos
 	}
+	p.inside_str_interp = false
 	return node
 }
 
@@ -1244,6 +1301,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 }
 
 fn (mut p Parser) const_decl() ast.ConstDecl {
+	p.top_level_statement_start()
 	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -1281,6 +1339,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		fields << field
 		p.global_scope.register(field.name, field)
 	}
+	p.top_level_statement_end()
 	p.check(.rpar)
 	return ast.ConstDecl{
 		pos: start_pos.extend(end_pos)
@@ -1315,10 +1374,16 @@ fn (mut p Parser) return_stmt() ast.Return {
 	}
 }
 
+const (
+	// modules which allow globals by default
+	global_enabled_mods = ['rand']
+)
+
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`
 fn (mut p Parser) global_decl() ast.GlobalDecl {
 	if !p.pref.translated && !p.pref.is_livemain && !p.builtin_mod && !p.pref.building_v &&
-		p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals {
+		p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals &&
+		!p.pref.is_fmt && p.mod !in global_enabled_mods {
 		p.error('use `v --enable-globals ...` to enable globals')
 	}
 	start_pos := p.tok.position()
@@ -1360,6 +1425,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 }
 
 fn (mut p Parser) enum_decl() ast.EnumDecl {
+	p.top_level_statement_start()
 	is_pub := p.tok.kind == .key_pub
 	start_pos := p.tok.position()
 	if is_pub {
@@ -1392,6 +1458,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			has_expr: has_expr
 		}
 	}
+	p.top_level_statement_end()
 	p.check(.rcbr)
 	attr := p.attr
 	is_flag := attr == 'flag'
@@ -1552,4 +1619,47 @@ fn (p &Parser) new_true_expr() ast.Expr {
 
 fn verror(s string) {
 	util.verror('parser error', s)
+}
+
+fn (mut p Parser) top_level_statement_start() {
+	if p.comments_mode == .toplevel_comments {
+		p.scanner.set_is_inside_toplevel_statement(true)
+		p.rewind_scanner_to_current_token_in_new_mode()
+		$if debugscanner ? {
+			eprintln('>> p.top_level_statement_start | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: $p.tok.lit $p.peek_tok.lit $p.peek_tok2.lit $p.peek_tok3.lit ...')
+		}
+	}
+}
+
+fn (mut p Parser) top_level_statement_end() {
+	if p.comments_mode == .toplevel_comments {
+		p.scanner.set_is_inside_toplevel_statement(false)
+		p.rewind_scanner_to_current_token_in_new_mode()
+		$if debugscanner ? {
+			eprintln('>> p.top_level_statement_end   | tidx:${p.tok.tidx:-5} | p.tok.kind: ${p.tok.kind:-10} | p.tok.lit: $p.tok.lit $p.peek_tok.lit $p.peek_tok2.lit $p.peek_tok3.lit ...')
+		}
+	}
+}
+
+fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
+	// Go back and rescan some tokens, ensuring that the parser's
+	// lookahead buffer p.peek_tok .. p.peek_tok3, will now contain
+	// the correct tokens (possible comments), for the new mode
+	// This refilling of the lookahead buffer is needed for the
+	// .toplevel_comments parsing mode.
+	tidx := p.tok.tidx
+	p.scanner.set_current_tidx(tidx - 5)
+	no_token := token.Token{}
+	p.prev_tok = no_token
+	p.tok = no_token
+	p.peek_tok = no_token
+	p.peek_tok2 = no_token
+	p.peek_tok3 = no_token
+	for {
+		p.next()
+		// eprintln('rewinding to ${p.tok.tidx:5} | goal: ${tidx:5}')
+		if tidx == p.tok.tidx {
+			break
+		}
+	}
 }
