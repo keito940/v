@@ -357,6 +357,8 @@ fn test_contains() {
 	s := 'view.v'
 	assert s.contains('vi')
 	assert !s.contains('random')
+	assert ''.contains('')
+	assert 'abc'.contains('')
 }
 
 fn test_arr_contains() {
@@ -738,6 +740,22 @@ fn test_double_quote_inter() {
 	println("${a} ${b}")
 	assert "${a} ${b}" == "1 2"
 	assert '${a} ${b}' == "1 2"
+}
+
+fn test_string_map() {
+	$if windows {
+		return // TODO
+	}
+	a := 'Hello'.map(fn (b byte) byte {
+		return b + 1
+	})
+	assert a == 'Ifmmp'
+
+	assert 'foo'.map(foo) == r'\ee'
+}
+
+fn foo(b byte) byte {
+	return b - 10
 }
 
 fn test_split_into_lines() {

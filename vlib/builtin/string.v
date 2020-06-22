@@ -716,6 +716,9 @@ pub fn (s string) count(substr string) int {
 }
 
 pub fn (s string) contains(p string) bool {
+	if p.len == 0 {
+		return true
+	}
 	s.index(p) or {
 		return false
 	}
@@ -1349,6 +1352,10 @@ pub fn (s string) repeat(count int) string {
 pub fn (s string) fields() []string {
 	// TODO do this in a better way
 	return s.replace('\t', ' ').split(' ')
+}
+
+pub fn (s string) map(func fn(byte) byte) string {
+	return string(s.bytes().map(func(it)))
 }
 
 // Allows multi-line strings to be formatted in a way that removes white-space

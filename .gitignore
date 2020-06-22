@@ -61,11 +61,13 @@ fns.txt
 cachegrind.out.*
 .gdb_history
 *.dSYM
+*.def
 
 # ignore system files
 .DS_Store
 ._*
 thumbs.db
 /.symlink/*
+/.bin/*
 
 _docs

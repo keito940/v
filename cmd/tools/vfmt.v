@@ -44,7 +44,7 @@ fn main() {
 	foptions := FormatOptions{
 		is_c: '-c' in args
 		is_l: '-l' in args
-		is_w: '-w' in args
+		is_w: '-ww' in args
 		is_diff: '-diff' in args
 		is_verbose: '-verbose' in args || '--verbose' in args
 		is_all: '-all' in args || '--all' in args
@@ -119,7 +119,7 @@ fn main() {
 			if worker_result.output.contains(formatted_file_token) {
 				wresult := worker_result.output.split(formatted_file_token)
 				formatted_warn_errs := wresult[0]
-				formatted_file_path := wresult[1]
+				formatted_file_path := wresult[1].trim_right('\n\r')
 				foptions.post_process_file(fpath, formatted_file_path)
 				if formatted_warn_errs.len > 0 {
 					eprintln(formatted_warn_errs)
@@ -140,7 +140,7 @@ fn main() {
 
 fn (foptions &FormatOptions) format_file(file string) {
 	mut prefs := pref.new_preferences()
-	prefs.is_fmt = util.is_fmt()
+	prefs.is_fmt = true
 	if foptions.is_verbose {
 		eprintln('vfmt2 running fmt.fmt over file: $file')
 	}

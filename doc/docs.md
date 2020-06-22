@@ -425,7 +425,9 @@ The type of an array is determined by the first element: `[1, 2, 3]` is an array
 
 `['a', 'b']` is an array of strings (`[]string`).
 
-V arrays are homogenous (all elements must have the same type). This means that code like `[1, 'a']` will not compile.
+If V is unable to infer the type of an array, the user can explicitly specify it for the first element: `[byte(0x0E), 0x1F, 0xBA, 0x0E]`
+
+V arrays are homogeneous (all elements must have the same type). This means that code like `[1, 'a']` will not compile.
 
 `<<` is an operator that appends a value to the end of the array.
 It can also append an entire array.
@@ -1149,7 +1151,7 @@ struct CallExpr {
 	...
 }
 
-fn (p mut Parser) expr(precedence int) Expr {
+fn (mut p Parser) expr(precedence int) Expr {
 	match p.tok {
 		.key_if { return IfExpr{} }
 		...
@@ -1159,7 +1161,7 @@ fn (p mut Parser) expr(precedence int) Expr {
 
 fn gen(expr Expr) {
 	match expr {
-		IfExpr { gen_if(it) }
+		IfExpr { gen_if(expr) } // `expr` is cast to the matched type automatically
 		...
 	}
 }
@@ -1174,6 +1176,42 @@ To check whether a sum type is a certain type, use `is`:
 ```v
 println(expr is IfExpr)
 ```
+
+To cast a sum type to one of it's variants you use `as`:
+
+```v
+bin_expr := expr as BinaryExpr
+```
+
+You can also use match to determine the variant & and cast to it at the same time.
+There are 3 ways to access the cast variant inside a match branch:
+- the `it` variable
+- the shadowed match variable
+- using `as` to specify a variable name
+
+```v
+    fn binary_expr(bx BinaryExpr) {...}
+    fn unary_expr(ux UnaryExpr) {...}
+    fn if_expr(ix IfExpr) {...}
+
+        // using `it`
+	match expr {
+		BinaryExpr { binary_expr(it) }
+		...
+	}
+        // using the shadowed variable, in this case `expr`
+	match expr {
+		UnaryExpr { unary_expr(expr) }
+		...
+	}
+        // using `as` to specify a variable
+	match expr as actual_expr {
+		IfExpr { if_expr(actual_expr) }
+		...
+	}
+```
+
+Note: shadowing only works when the match expression is a variable. It will not work on struct fields, arrays indexing, or map key lookup.
 
 ## Option/Result types and error handling
 
@@ -1414,7 +1452,7 @@ fn read_log() {
 
 (this is still in an alpha state)
 
-V has a built-in ORM (object-relational mapping) which supports Postgres, and will soon support MySQL and SQLite.
+V has a built-in ORM (object-relational mapping) which supports SQLite, and will soon support MySQL, Postgres, MS SQL, and Oracle.
 
 V's ORM provides a number of benefits:
 
@@ -1432,28 +1470,30 @@ struct Customer { // struct name has to be the same as the table name (for now)
     country string
 }
 
-db := pg.connect(db_name, db_user)
+db := sqlite.connect('customers.db')
 
 // select count(*) from Customer
-nr_customers := db.select count from Customer
+nr_customers := sql db { select count from Customer }
 println('number of all customers: $nr_customers')
 
 // V syntax can be used to build queries
 // db.select returns an array
-uk_customers := db.select from Customer where country == 'uk' && nr_orders > 0
+uk_customers := sql db { select from Customer where country == 'uk' && nr_orders > 0 }
 println(uk_customers.len)
 for customer in uk_customers {
     println('$customer.id - $customer.name')
 }
 
 // by adding `limit 1` we tell V that there will be only one object
-customer := db.select from Customer where id == 1 limit 1
+customer := sql db { select from Customer where id == 1 limit 1 }
 println('$customer.id - $customer.name')
 
 // insert a new customer
 new_customer := Customer{name: 'Bob', nr_orders: 10}
-db.insert(new_customer)
+sql db { insert new_customer into Customer }
 ```
+
+For more examples, see <a href='https://github.com/vlang/v/blob/master/vlib/orm/orm_test.v'>vlib/orm/orm_test.v</a>.
 
 ## vfmt
 
@@ -1567,7 +1607,7 @@ NB: Each flag must go on its own line (for now)
 You can also include C code directly in your V module. For example, let's say that your C code is located in a folder named 'c' inside your module folder. Then:
 
 * Put a v.mod file inside the toplevel folder of your module (if you
-created your module with `v create` you already have v.mod file). For
+created your module with `v new` you already have v.mod file). For
 example:
 ```v
 Module {
