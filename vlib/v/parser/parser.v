@@ -114,6 +114,12 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		warnings: []errors.Warning{}
 		global_scope: global_scope
 	}
+	if pref.is_vet && p.scanner.text.contains('\n        ') {
+		// TODO make this smarter
+		println(p.scanner.file_path)
+		println('Looks like you are using spaces for indentation.\n' + 'You can run `v fmt -w file.v` to fix that automatically')
+		exit(1)
+	}
 	return p.parse()
 }
 
@@ -471,6 +477,7 @@ pub fn (mut p Parser) comment() ast.Comment {
 	p.next()
 	// p.next_with_comment()
 	return ast.Comment{
+		is_multi: text.contains('\n')
 		text: text
 		pos: pos
 	}
@@ -500,7 +507,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.name, .key_mut, .key_static, .mul {
 			if p.tok.kind == .name {
 				if p.tok.lit == 'sql' {
-					return p.sql_insert_expr()
+					return p.sql_stmt()
 				}
 				if p.peek_tok.kind == .colon {
 					// `label:`
@@ -733,8 +740,9 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	left0 := left[0]
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
 		return p.partial_assign_stmt(left)
-	} else if is_top_level && tok.kind !in [.key_if, .key_match] && left0 !is ast.CallExpr &&
-		left0 !is ast.PostfixExpr && !(left0 is ast.InfixExpr && (left0 as ast.InfixExpr).op == .left_shift) &&
+	} else if is_top_level && tok.kind !in [.key_if, .key_match] &&
+		left0 !is ast.CallExpr && left0 !is ast.PostfixExpr && !(left0 is ast.InfixExpr &&
+		(left0 as ast.InfixExpr).op == .left_shift) &&
 		left0 !is ast.ComptimeCall {
 		p.error_with_pos('expression evaluated but not used', left0.position())
 	}
@@ -847,8 +855,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			else {}
 		}
 	}
-	if p.peek_tok.kind == .dot && !known_var && (language != .v || p.known_import(p.tok.lit) ||
-		p.mod.all_after_last('.') == p.tok.lit) {
+	mut is_mod_cast := false
+	if p.peek_tok.kind == .dot && !known_var &&
+		(language != .v || p.known_import(p.tok.lit) || p.mod.all_after_last('.') == p.tok.lit) {
 		if language == .c {
 			mod = 'C'
 		} else if language == .js {
@@ -856,6 +865,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		} else {
 			if p.tok.lit in p.imports {
 				p.register_used_import(p.tok.lit)
+				if p.peek_tok.kind == .dot && p.peek_tok2.lit[0].is_capital() {
+					is_mod_cast = true
+				}
 			}
 			// prepend the full import
 			mod = p.imports[p.tok.lit]
@@ -864,9 +876,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		p.check(.dot)
 		p.expr_mod = mod
 	}
+	lit0_is_capital := p.tok.lit[0].is_capital()
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	// fn call or type cast
-	if p.peek_tok.kind == .lpar || (p.peek_tok.kind == .lt && p.peek_tok2.kind == .name &&
+	if p.peek_tok.kind == .lpar ||
+		(p.peek_tok.kind == .lt && !lit0_is_capital && p.peek_tok2.kind == .name &&
 		p.peek_tok3.kind == .gt) {
 		// foo() or foo<int>()
 		mut name := p.tok.lit
@@ -876,8 +890,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		name_w_mod := p.prepend_mod(name)
 		// type cast. TODO: finish
 		// if name in table.builtin_type_names {
-		if !known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) &&
-			name !in ['C.stat', 'C.sigaction'] {
+		if (!known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs) &&
+			name !in ['C.stat', 'C.sigaction']) || is_mod_cast {
 			// TODO handle C.stat()
 			mut to_typ := p.parse_type()
 			if p.is_amp {
@@ -910,11 +924,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			// println('calling $p.tok.lit')
 			node = p.call_expr(language, mod)
 		}
-	} else if p.peek_tok.kind == .lcbr && !p.inside_match && !p.inside_match_case && !p.inside_if &&
+	} else if (p.peek_tok.kind == .lcbr || (p.peek_tok.kind == .lt && lit0_is_capital)) && !p.inside_match && !p.inside_match_case && !p.inside_if &&
 		!p.inside_for { // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
 		return p.struct_init(false) // short_syntax: false
-	} else if p.peek_tok.kind == .dot && (p.tok.lit[0].is_capital() && !known_var && language ==
-		.v) {
+	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
 		// `Color.green`
 		mut enum_name := p.check_name()
 		if mod != '' {
@@ -1328,9 +1341,12 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	p.next() // (
 	mut fields := []ast.ConstField{}
 	for p.tok.kind != .rpar {
-		mut comment := ast.Comment{}
-		if p.tok.kind == .comment {
-			comment = p.comment()
+		mut comments := []ast.Comment{}
+		for p.tok.kind == .comment {
+			comments << p.comment()
+			if p.tok.kind == .rpar {
+				break
+			}
 		}
 		pos := p.tok.position()
 		name := p.check_name()
@@ -1347,7 +1363,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			name: full_name
 			expr: expr
 			pos: pos
-			comment: comment
+			comments: comments
 		}
 		fields << field
 		p.global_scope.register(field.name, field)
@@ -1387,8 +1403,9 @@ const (
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`
 fn (mut p Parser) global_decl() ast.GlobalDecl {
 	if !p.pref.translated && !p.pref.is_livemain && !p.builtin_mod && !p.pref.building_v &&
-		p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !os.getwd().contains('/volt') && !p.pref.enable_globals &&
-		!p.pref.is_fmt && p.mod !in global_enabled_mods {
+		p.mod != 'ui' && p.mod != 'gg2' &&
+		p.mod != 'uiold' && !p.pref.enable_globals && !p.pref.is_fmt &&
+		p.mod !in global_enabled_mods {
 		p.error('use `v --enable-globals ...` to enable globals')
 	}
 	start_pos := p.tok.position()
@@ -1478,7 +1495,7 @@ $pubfn (mut e  $name) set(flag $name)      { unsafe{ *e = int(*e) |  (1 << int(f
 $pubfn (mut e  $name) clear(flag $name)    { unsafe{ *e = int(*e) & ~(1 << int(flag)) } }
 $pubfn (mut e  $name) toggle(flag $name)   { unsafe{ *e = int(*e) ^  (1 << int(flag)) } }
 //
-        ')
+')
 	}
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .enum_
@@ -1508,6 +1525,9 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	end_pos := p.tok.position()
 	decl_pos := start_pos.extend(end_pos)
 	name := p.check_name()
+	if name.len == 1 && name[0].is_capital() {
+		p.error_with_pos('single letter capital names are reserved for generic template types.', decl_pos)
+	}
 	mut sum_variants := []table.Type{}
 	if p.tok.kind == .assign {
 		p.next() // TODO require `=`
@@ -1569,7 +1589,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		parent_idx: pid
 		mod: p.mod
 		info: table.Alias{
-			parent_typ: parent_type
+			parent_type: parent_type
 			language: language
 		}
 		is_public: is_pub

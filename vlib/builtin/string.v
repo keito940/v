@@ -595,7 +595,7 @@ fn (s string) index_kmp(p string) int {
 	if p.len > s.len {
 		return -1
 	}
-	mut prefix := [0].repeat(p.len)
+	mut prefix := []int{len:p.len}
 	mut j := 0
 	for i := 1; i < p.len; i++ {
 		for p.str[j] != p.str[i] && j > 0 {
@@ -1307,7 +1307,8 @@ pub fn (s string) limit(max int) string {
 
 [deprecated]
 pub fn (c byte) is_white() bool {
-	panic('Use `string.is_space` instead of `string.is_white')
+	eprintln('warning: `string.is_white` has been deprecated, use `string.is_space` instead')
+	return c.is_space()
 }
 
 pub fn (s string) hash() int {
@@ -1325,7 +1326,7 @@ pub fn (s string) bytes() []byte {
 	if s.len == 0 {
 		return []
 	}
-	mut buf := [byte(0)].repeat(s.len)
+	mut buf := []byte{ len:s.len }
 	C.memcpy(buf.data, s.str, s.len)
 	return buf
 }

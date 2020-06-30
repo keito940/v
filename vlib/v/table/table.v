@@ -21,14 +21,15 @@ pub mut:
 
 pub struct Fn {
 pub:
-	args        []Arg
-	return_type Type
-	is_variadic bool
-	language    Language
-	is_generic  bool
-	is_pub      bool
-	mod         string
-	ctdefine    string // compile time define. myflag, when [if myflag] tag
+	args          []Arg
+	return_type   Type
+	is_variadic   bool
+	language      Language
+	is_generic    bool
+	is_pub        bool
+	is_deprecated bool
+	mod           string
+	ctdefine      string // compile time define. myflag, when [if myflag] tag
 pub mut:
 	name        string
 }
@@ -201,7 +202,7 @@ pub fn (t &Table) get_type_name(typ Type) string {
 pub fn (t &Table) unalias_num_type(typ Type) Type {
 	sym := t.get_type_symbol(typ)
 	if sym.kind == .alias {
-		pt := (sym.info as Alias).parent_typ
+		pt := (sym.info as Alias).parent_type
 		if pt <= f64_type && pt >= void_type {
 			return pt
 		}

@@ -32,13 +32,31 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.next() // C || JS
 		p.next() // .
 	}
+	
 	is_typedef := 'typedef' in p.attrs
-	no_body := p.peek_tok.kind != .lcbr
+	end_pos := p.tok.position()
+	mut name := p.check_name()
+	if name.len == 1 && name[0].is_capital() {
+		p.error_with_pos('single letter capital names are reserved for generic template types.', end_pos)
+	}
+	mut generic_types := []table.Type{}
+	if p.tok.kind == .lt {
+		p.next()
+		for {
+			generic_types << p.parse_type()
+			if p.tok.kind != .comma {
+				break
+			}
+			p.next()
+		}
+		p.check(.gt)
+	}
+
+	no_body := p.tok.kind != .lcbr
 	if language == .v && no_body {
 		p.error('`$p.tok.lit` lacks body')
 	}
-	end_pos := p.tok.position()
-	mut name := p.check_name()
+
 	if language == .v && p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() {
 		p.error_with_pos('struct name `$name` must begin with capital letter', end_pos)
 	}
@@ -55,12 +73,20 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	mut is_field_mut := false
 	mut is_field_pub := false
 	mut is_field_global := false
+	mut end_comments := []ast.Comment{}
 	if !no_body {
 		p.check(.lcbr)
 		for p.tok.kind != .rcbr {
-			mut comment := ast.Comment{}
-			if p.tok.kind == .comment {
-				comment = p.comment()
+			mut comments := []ast.Comment{}
+			for p.tok.kind == .comment {
+				comments << p.comment()
+				if p.tok.kind == .rcbr {
+					break
+				}
+			}
+			if p.tok.kind == .rcbr {
+				end_comments = comments
+				break
 			}
 			if p.tok.kind == .key_pub {
 				p.next()
@@ -104,17 +130,46 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_field_mut = true
 				is_field_global = true
 			}
+			for p.tok.kind == .comment {
+				comments << p.comment()
+				if p.tok.kind == .rcbr {
+					break
+				}
+			}
 			field_start_pos := p.tok.position()
 			field_name := p.check_name()
 			// p.warn('field $field_name')
+			for p.tok.kind == .comment {
+				comments << p.comment()
+				if p.tok.kind == .rcbr {
+					break
+				}
+			}
+			// println(p.tok.position())
 			typ := p.parse_type()
-			field_pos := field_start_pos.extend(p.tok.position())
+			// field_pos := field_start_pos.extend(p.tok.position())
+			field_pos := token.Position{
+				line_nr: field_start_pos.line_nr
+				pos: field_start_pos.pos
+				len: p.tok.position().pos - field_start_pos.pos
+			}
 			/*
 			if name == '_net_module_s' {
 			s := p.table.get_type_symbol(typ)
 			println('XXXX' + s.str())
 		}
 			*/
+			// Comments after type (same line)
+			line_pos := field_pos.line_nr
+			for p.tok.kind == .comment && line_pos + 1 == p.tok.line_nr {
+				if p.tok.lit.contains('\n') {
+					break
+				}
+				comments << p.comment()
+				if p.tok.kind == .rcbr {
+					break
+				}
+			}
 			mut attrs := []string{}
 			if p.tok.kind == .lsbr {
 				parsed_attrs := p.attributes(false)
@@ -131,21 +186,18 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				// p.expr(0)
 				default_expr = p.expr(0)
 				match default_expr {
-					ast.EnumVal { it.typ = typ }
+					ast.EnumVal { default_expr.typ = typ }
 					// TODO: implement all types??
 					else {}
 				}
 				has_default_expr = true
-			}
-			if p.tok.kind == .comment {
-				comment = p.comment()
 			}
 			// TODO merge table and ast Fields?
 			ast_fields << ast.StructField{
 				name: field_name
 				pos: field_pos
 				typ: typ
-				comment: comment
+				comments: comments
 				default_expr: default_expr
 				has_default_expr: has_default_expr
 				attrs: attrs
@@ -181,6 +233,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			is_typedef: is_typedef
 			is_union: is_union
 			is_ref_only: 'ref_only' in p.attrs
+			generic_types: generic_types
 		}
 		mod: p.mod
 		is_public: is_pub
@@ -209,6 +262,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		language: language
 		is_union: is_union
 		attrs: p.attrs
+		end_comments: end_comments
 	}
 }
 
@@ -310,7 +364,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			p.error('interface methods cannot contain uppercase letters, use snake_case instead')
 		}
 		// field_names << name
-		args2, _ := p.fn_args()
+		args2, _, _ := p.fn_args() // TODO merge table.Arg and ast.Arg to avoid this
 		mut args := [table.Arg{
 			name: 'x'
 			typ: typ

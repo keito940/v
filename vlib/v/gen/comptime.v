@@ -13,18 +13,19 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 				fn_decl := stmt as ast.FnDecl
 				// insert stmts from vweb_tmpl fn
 				if fn_decl.name.starts_with('vweb_tmpl') {
+					g.inside_vweb_tmpl = true
 					g.stmts(fn_decl.stmts)
+					g.inside_vweb_tmpl = false
 					break
 				}
 			}
 		}
-		g.writeln('vweb__Context_html(&app->vweb, _tmpl_res_$g.fn_decl.name)')
+		g.writeln('vweb__Context_html(&app->vweb, _tmpl_res_$g.fn_decl.name); string_free(&_tmpl_res_$g.fn_decl.name);')
 		return
 	}
 	g.writeln('// $' + 'method call. sym="$node.sym.name"')
 	mut j := 0
-	result_type := g.table.find_type_idx('vweb.Result')
-	println('!!!!! $result_type')
+	result_type := g.table.find_type_idx('vweb.Result') // TODO not just vweb
 	for method in node.sym.methods {
 		// if method.return_type != table.void_type {
 		if method.return_type != result_type {

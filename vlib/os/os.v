@@ -127,6 +127,7 @@ pub fn read_file(path string) ?string {
 }
 
 /***************************** Utility  ops ************************/
+
 pub fn (mut f File) flush() {
 	if !f.opened {
 		return
@@ -158,16 +159,13 @@ pub fn mv(old, new string) {
 	}
 }
 
-pub fn cp(old, new string) ?bool {
+pub fn cp(old, new string) ? {
 	$if windows {
 		w_old := old.replace('/', '\\')
 		w_new := new.replace('/', '\\')
 		C.CopyFile(w_old.to_wide(), w_new.to_wide(), false)
 		result := C.GetLastError()
-		if result == 0 {
-			return true
-		}
-		else {
+		if result != 0 {
 			return error_with_code('failed to copy $old to $new', int(result))
 		}
 	} $else {
@@ -198,16 +196,16 @@ pub fn cp(old, new string) ?bool {
 		if C.chmod(new.str, from_attr.st_mode) < 0 {
 			return error_with_code('failed to set permissions for $new', int(-1))
 		}
-		return true
 	}
 }
 
 [deprecated]
-pub fn cp_r(osource_path, odest_path string, overwrite bool) ?bool {
-	panic('Use `os.cp_all` instead of `os.cp_r`')
+pub fn cp_r(osource_path, odest_path string, overwrite bool) ? {
+	eprintln('warning: `os.cp_r` has been deprecated, use `os.cp_all` instead')
+	return cp_all(osource_path, odest_path, overwrite)
 }
 
-pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
+pub fn cp_all(osource_path, odest_path string, overwrite bool) ? {
 	source_path := os.real_path(osource_path)
 	dest_path := os.real_path(odest_path)
 	if !os.exists(source_path) {
@@ -227,7 +225,7 @@ pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
 		os.cp(source_path, adjusted_path) or {
 			return error(err)
 		}
-		return true
+		return
 	}
 	if !os.is_dir(dest_path) {
 		return error('Destination path is not a valid directory')
@@ -248,17 +246,17 @@ pub fn cp_all(osource_path, odest_path string, overwrite bool) ?bool {
 			panic(err)
 		}
 	}
-	return true
 }
 
 // mv_by_cp first copies the source file, and if it is copied successfully, deletes the source file.
 // mv_by_cp may be used when you are not sure that the source and target are on the same mount/partition.
-pub fn mv_by_cp(source string, target string) ?bool {
+pub fn mv_by_cp(source string, target string) ? {
 	os.cp(source, target) or {
 		return error(err)
 	}
-	os.rm(source)
-	return true
+	os.rm(source) or {
+		return error(err)
+	}
 }
 
 // vfopen returns an opened C file, given its path and open mode.
@@ -378,8 +376,6 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 		opened: true
 	}
 }
-
-
 
 // system starts the specified command, waits for it to complete, and returns its code.
 fn vpopen(path string) voidptr {
@@ -622,43 +618,63 @@ pub fn is_readable(path string) bool {
 
 [deprecated]
 pub fn file_exists(_path string) bool {
-	panic('Use `os.exists` instead of `os.file_exists`')
+	eprintln('warning: `os.file_exists` has been deprecated, use `os.exists` instead')
+	return exists(_path)
 }
 
 // rm removes file in `path`.
-pub fn rm(path string) {
+pub fn rm(path string) ? {
 	$if windows {
-		C._wremove(path.to_wide())
+		rc := C._wremove(path.to_wide())
+		if rc == -1 {
+			//TODO: proper error as soon as it's supported on windows
+			return error('Failed to remove "$path"')
+		}
 	} $else {
-		C.remove(path.str)
+		rc := C.remove(path.str)
+		if rc == -1 {
+			return error(posix_get_error_msg(C.errno))
+		}
 	}
 	// C.unlink(path.cstr())
 }
 // rmdir removes a specified directory.
-pub fn rmdir(path string) {
-	$if !windows {
-		C.rmdir(path.str)
+pub fn rmdir(path string) ? {
+	$if windows {
+		rc := C.RemoveDirectory(path.to_wide())
+		if rc == 0 {
+			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 is failure
+			return error('Failed to remove "$path"')
+		}
 	} $else {
-		C.RemoveDirectory(path.to_wide())
+		rc := C.rmdir(path.str)
+		if rc == -1 {
+			return error(posix_get_error_msg(C.errno))
+		}
 	}
 }
 
 [deprecated]
 pub fn rmdir_recursive(path string) {
-	panic('Use `os.rmdir_all` instead of `os.rmdir_recursive`')
+	eprintln('warning: `os.rmdir_recursive` has been deprecated, use `os.rmdir_all` instead')
+	rmdir_all(path)
 }
 
-pub fn rmdir_all(path string) {
+pub fn rmdir_all(path string) ? {
+	mut ret_err := ''
 	items := os.ls(path) or {
-		return
+		return error(err)
 	}
 	for item in items {
 		if os.is_dir(os.join_path(path, item)) {
 			rmdir_all(os.join_path(path, item))
 		}
-		os.rm(os.join_path(path, item))
+		os.rm(os.join_path(path, item)) or { ret_err = err }
 	}
-	os.rmdir(path)
+	os.rmdir(path) or { ret_err = err }
+	if ret_err.len > 0 {
+		return error(ret_err)
+	}
 }
 
 pub fn is_dir_empty(path string) bool {
@@ -863,9 +879,9 @@ pub fn home_dir() string {
 }
 
 // write_file writes `text` data to a file in `path`.
-pub fn write_file(path, text string) {
+pub fn write_file(path, text string) ? {
 	mut f := os.create(path) or {
-		return
+		return error(err)
 	}
 	f.write(text)
 	f.close()
@@ -1004,7 +1020,8 @@ pub fn exists_in_system_path(prog string) bool {
 
 [deprecated]
 pub fn dir_exists(path string) bool {
-	panic('Use `os.is_dir` instead of `os.dir_exists`')
+	eprintln('warning: `os.dir_exists` has been deprecated, use `os.is_dir` instead')
+	return is_dir(path)
 }
 
 // is_dir returns a boolean indicating whether the given path is a directory.
@@ -1198,7 +1215,8 @@ pub fn log(s string) {
 
 [deprecated]
 pub fn flush_stdout() {
-	panic('Use `os.flush` instead of `os.flush_stdout`')
+	eprintln('warning: `os.flush_stdout` has been deprecated, use `os.flush` instead')
+	flush()
 }
 
 pub fn flush() {
@@ -1288,7 +1306,6 @@ pub fn resource_abs_path(path string) string {
 	}
 	return os.real_path(os.join_path(base_path, path))
 }
-
 
 // open tries to open a file for reading and returns back a read-only `File` object
 pub fn open(path string) ?File {
