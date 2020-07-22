@@ -32,6 +32,7 @@ pub fn (mut b Builder) write_b(data byte) {
 	b.len++
 }
 
+[inline]
 pub fn (mut b Builder) write(s string) {
 	if s == '' {
 		return
@@ -49,21 +50,26 @@ pub fn (mut b Builder) go_back(n int) {
 	b.len -= n
 }
 
+fn bytes2string(b []byte) string {
+	mut copy := b.clone()
+	copy << `\0`
+	res := tos(copy.data, copy.len-1)
+	return res
+}
+
 pub fn (mut b Builder) cut_last(n int) string {
-	buf := b.buf[b.len-n..]
-	s := string(buf.clone())
+	res := bytes2string( b.buf[b.len-n..] )
 	b.buf.trim(b.buf.len-n)
 	b.len -= n
-	return s
+	return res
 }
 
 /*
 pub fn (mut b Builder) cut_to(pos int) string {
-	buf := b.buf[pos..]
-	s := string(buf.clone())
+	res := bytes2string( b.buf[pos..] )
 	b.buf.trim(pos)
 	b.len = pos
-	return s
+	return res
 }
 */
 
@@ -72,6 +78,7 @@ pub fn (mut b Builder) go_back_to(pos int) {
 	b.len = pos
 }
 
+[inline]
 pub fn (mut b Builder) writeln(s string) {
 	// for c in s {
 	// b.buf << c
@@ -88,8 +95,7 @@ pub fn (b &Builder) last_n(n int) string {
 	if n > b.len {
 		return ''
 	}
-	buf := b.buf[b.len-n..]
-	return string(buf.clone())
+	return bytes2string( b.buf[b.len-n..] )
 }
 
 // buf == 'hello world'
@@ -98,10 +104,7 @@ pub fn (b &Builder) after(n int) string {
 	if n >= b.len {
 		return ''
 	}
-	buf := b.buf[n..]
-	mut copy := buf.clone()
-	copy << `\0`
-	return string(copy)
+	return bytes2string( b.buf[n..] )
 }
 
 // NB: in order to avoid memleaks and additional memory copies, after a call to b.str(),

@@ -422,6 +422,8 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		ast.Comment {
 			// Skip: don't generate comments
 		}
+		ast.CompFor {
+			}
 		ast.CompIf {
 			// skip: JS has no compile time if
 		}
@@ -561,6 +563,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.IntegerLiteral {
 			g.write(it.val)
 		}
+		ast.LockExpr {
+			g.gen_lock_expr(it)
+		}
 		ast.MapInit {
 			g.gen_map_init_expr(it)
 		}
@@ -628,6 +633,10 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.ComptimeCall {
 			// TODO
 		}
+		ast.UnsafeExpr {
+			es := it.stmts[0] as ast.ExprStmt
+			g.expr(es.expr)
+		}
 	}
 }
 
@@ -658,32 +667,31 @@ fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
 	g.writeln('}')
 }
 
-fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
-	if it.left.len > it.right.len {
+fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
+	if stmt.left.len > stmt.right.len {
 		// multi return
 		g.write('const [')
-		for i, left in it.left {
+		for i, left in stmt.left {
 			if !left.is_blank_ident() {
 				g.expr(left)
 			}
-			if i < it.left.len - 1 {
+			if i < stmt.left.len - 1 {
 				g.write(', ')
 			}
 		}
 		g.write('] = ')
-		g.expr(it.right[0])
+		g.expr(stmt.right[0])
 		g.writeln(';')
 	} else {
 		// `a := 1` | `a,b := 1,2`
-		for i, left in it.left {
-			mut op := it.op
-			if it.op == .decl_assign { op = .assign }
-			val := it.right[i]
+		for i, left in stmt.left {
+			mut op := stmt.op
+			if stmt.op == .decl_assign { op = .assign }
+			val := stmt.right[i]
 			mut is_mut := false
 			if left is ast.Ident {
-				ident := left as ast.Ident
-				is_mut = ident.is_mut
-				if ident.kind == .blank_ident || ident.name in ['', '_'] {
+				is_mut = left.is_mut
+				if left.kind == .blank_ident || left.name in ['', '_'] {
 					tmp_var := g.new_tmp_var()
 					// TODO: Can the tmp_var declaration be omitted?
 					g.write('const $tmp_var = ')
@@ -693,13 +701,13 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 				}
 			}
 
-			mut styp := g.typ(it.left_types[i])
+			mut styp := g.typ(stmt.left_types[i])
 
 			if !g.inside_loop && styp.len > 0 {
 				g.doc.gen_typ(styp)
 			}
 
-			if it.op == .decl_assign {
+			if stmt.op == .decl_assign {
 				if g.inside_loop || is_mut {
 					g.write('let ')
 				} else {
@@ -811,7 +819,7 @@ fn fn_has_go(it ast.FnDecl) bool {
 fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 	g.fn_decl = &it
 	has_go := fn_has_go(it)
-	is_main := it.name == 'main'
+	is_main := it.name == 'main.main'
 	if is_main {
 		// there is no concept of main in JS but we do have iife
 		g.writeln('/* program entry point */')
@@ -1190,6 +1198,10 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 	g.write(name)
 }
 
+fn (mut g JsGen) gen_lock_expr(node ast.LockExpr) {
+	// TODO: implement this
+}
+
 fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 	type_sym := g.table.get_type_symbol(node.typ)
 
@@ -1245,12 +1257,12 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 	}
 }
 
-fn (mut g JsGen) gen_index_expr(it ast.IndexExpr) {
-	left_typ := g.table.get_type_symbol(it.left_type)
+fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
+	left_typ := g.table.get_type_symbol(expr.left_type)
 	// TODO: Handle splice setting if it's implemented
-	if it.index is ast.RangeExpr {
-		range := it.index as ast.RangeExpr
-		g.expr(it.left)
+	if expr.index is ast.RangeExpr {
+		range := expr.index as ast.RangeExpr
+		g.expr(expr.left)
 		g.write('.slice(')
 		if range.has_low {
 			g.expr(range.low)
@@ -1261,35 +1273,35 @@ fn (mut g JsGen) gen_index_expr(it ast.IndexExpr) {
 		if range.has_high {
 			g.expr(range.high)
 		} else {
-			g.expr(it.left)
+			g.expr(expr.left)
 			g.write('.length')
 		}
 		g.write(')')
 	} else if left_typ.kind == .map {
-		g.expr(it.left)
-		if it.is_setter {
+		g.expr(expr.left)
+		if expr.is_setter {
 			g.inside_map_set = true
 			g.write('.set(')
 		} else {
 			g.write('.get(')
 		}
-		g.expr(it.index)
-		if !it.is_setter { g.write(')') }
+		g.expr(expr.index)
+		if !expr.is_setter { g.write(')') }
 	} else if left_typ.kind == .string {
-		if it.is_setter {
+		if expr.is_setter {
 			// TODO: What's the best way to do this?
 			// 'string'[3] = `o`
 		} else {
-			g.expr(it.left)
+			g.expr(expr.left)
 			g.write('.charCodeAt(')
-			g.expr(it.index)
+			g.expr(expr.index)
 			g.write(')')
 		}
 	} else {
 		// TODO Does this cover all cases?
-		g.expr(it.left)
+		g.expr(expr.left)
 		g.write('[')
-		g.expr(it.index)
+		g.expr(expr.index)
 		g.write(']')
 	}
 }
@@ -1318,6 +1330,12 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write(g.typ(it.right_type))
 		if it.op == .not_is { g.write(')') }
 	} else {
+		both_are_int := int(it.left_type) in table.integer_type_idxs && int(it.right_type) in table.integer_type_idxs
+
+		if it.op == .div && both_are_int {
+			g.write('parseInt(')
+		}
+
 		g.expr(it.left)
 
 		// in js == is non-strict & === is strict, always do strict
@@ -1330,6 +1348,11 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		}
 
 		g.expr(it.right)
+
+		// Int division: 2.5 -> 2 by prepending |0
+		if it.op == .div && both_are_int {
+			g.write(',10)')
+		}
 	}
 }
 
@@ -1337,8 +1360,8 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 	// key_typ_sym := g.table.get_type_symbol(it.key_type)
 	// value_typ_sym := g.table.get_type_symbol(it.value_type)
-	// key_typ_str := key_typ_sym.name.replace('.', '__')
-	// value_typ_str := value_typ_sym.name.replace('.', '__')
+	// key_typ_str := util.no_dots(key_typ_sym.name)
+	// value_typ_str := util.no_dots(value_typ_sym.name)
 	if it.vals.len > 0 {
 		g.writeln('new Map([')
 		g.inc_indent()

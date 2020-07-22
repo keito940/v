@@ -35,7 +35,8 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
 		if !generic_type.has_flag(.generic) {
-			p.table.register_fn_gen_type(fn_name, generic_type)
+			full_generic_fn_name := if fn_name.contains('.') { fn_name } else { p.prepend_mod(fn_name) }
+			p.table.register_fn_gen_type(full_generic_fn_name, generic_type)
 		}
 	}
 	p.check(.lpar)
@@ -99,14 +100,16 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 pub fn (mut p Parser) call_args() []ast.CallArg {
 	mut args := []ast.CallArg{}
 	for p.tok.kind != .rpar {
-		mut is_mut := false
-		if p.tok.kind == .key_mut {
+		is_shared := p.tok.kind == .key_shared
+		is_atomic := p.tok.kind == .key_atomic
+		is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
+		if is_mut {
 			p.next()
-			is_mut = true
 		}
 		e := p.expr(0)
 		args << ast.CallArg{
 			is_mut: is_mut
+			share: table.sharetype_from_flags(is_shared, is_atomic)
 			expr: e
 		}
 		if p.tok.kind != .rpar {
@@ -148,7 +151,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if p.tok.kind == .lpar {
 		p.next() // (
 		is_method = true
-		rec_mut = p.tok.kind == .key_mut
+		is_shared := p.tok.kind == .key_shared
+		is_atomic := p.tok.kind == .key_atomic
+		rec_mut = p.tok.kind == .key_mut || is_shared || is_atomic
 		if rec_mut {
 			p.next() // `mut`
 		}
@@ -170,6 +175,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		rec_type = p.parse_type_with_mut(rec_mut)
 		if is_amp && rec_mut {
 			p.error('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`')
+		}
+		if is_shared {
+			rec_type = rec_type.set_flag(.shared_f)
+		}
+		if is_atomic {
+			rec_type = rec_type.set_flag(.atomic_f)
 		}
 		args << table.Arg{
 			name: rec_name
@@ -219,7 +230,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut end_pos := p.prev_tok.position()
 	// Return type
 	mut return_type := table.void_type
-	if p.tok.kind.is_start_of_type() || (p.tok.kind == .key_fn && p.tok.line_nr == p.prev_tok.line_nr) {
+	if p.tok.kind.is_start_of_type() || (p.tok.kind == .key_fn &&
+		p.tok.line_nr == p.prev_tok.line_nr) {
 		end_pos = p.tok.position()
 		return_type = p.parse_type()
 	}
@@ -237,6 +249,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			ctdefine: ctdefine
+			mod: p.mod
+			attrs: p.attrs
 		})
 	} else {
 		if language == .c {
@@ -249,6 +263,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		if _ := p.table.find_fn(name) {
 			p.fn_redefinition_error(name)
 		}
+		// p.warn('reg functn $name ()')
 		p.table.register_fn(table.Fn{
 			name: name
 			args: args
@@ -269,11 +284,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	body_start_pos := p.peek_tok.position()
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block_no_scope(true)
-		// Add return if `fn(...) ? {...}` have no return at end
-        if return_type != table.void_type && p.table.get_type_symbol(return_type).kind == .void &&
-                return_type.has_flag(.optional) && (stmts.len == 0 || stmts[stmts.len-1] !is ast.Return) {
-            stmts << ast.Return{ pos: p.tok.position() }
-        }
 	}
 	p.close_scope()
 	if !no_body && are_args_type_only {
@@ -337,12 +347,6 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		return_type: return_type
 	}
 	name := 'anon_${p.tok.pos}_$func.signature()'
-	mut is_called := false
-	if p.tok.kind == .lpar {
-		is_called = true
-		p.check(.lpar)
-		p.check(.rpar)
-	}
 	func.name = name
 	idx := p.table.find_or_register_fn_type(p.mod, func, true, false)
 	typ := table.new_type(idx)
@@ -361,7 +365,6 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			pos: pos
 			file: p.file_name
 		}
-		is_called: is_called
 		typ: typ
 	}
 }
@@ -372,7 +375,9 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 	mut args := []table.Arg{}
 	mut is_variadic := false
 	// `int, int, string` (no names, just types)
-	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] || (p.peek_tok.kind == .comma && p.table.known_type(p.tok.lit)) ||
+	argname := if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() { p.prepend_mod(p.tok.lit) } else { p.tok.lit }
+	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] ||
+		(p.peek_tok.kind == .comma && p.table.known_type(argname)) ||
 		p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
 	if types_only {
@@ -380,7 +385,9 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 		mut arg_no := 1
 		for p.tok.kind != .rpar {
 			arg_name := 'arg_$arg_no'
-			is_mut := p.tok.kind == .key_mut
+			is_shared := p.tok.kind == .key_shared
+			is_atomic := p.tok.kind == .key_atomic
+			is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
 			if is_mut {
 				p.next()
 			}
@@ -392,13 +399,27 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 			mut arg_type := p.parse_type()
 			if is_mut {
 				if !arg_type.has_flag(.generic) {
-					p.check_fn_mutable_arguments(arg_type, pos)
+					if is_shared {
+						p.check_fn_shared_arguments(arg_type, pos)
+					} else if is_atomic {
+						p.check_fn_atomic_arguments(arg_type, pos)
+					} else {
+						p.check_fn_mutable_arguments(arg_type, pos)
+					}
+				} else if is_shared || is_atomic {
+					p.error_with_pos('generic object cannot be `atomic`or `shared`', pos)
 				}
 				// if arg_type.is_ptr() {
 				// p.error('cannot mut')
 				// }
 				// arg_type = arg_type.to_ptr()
 				arg_type = arg_type.set_nr_muls(1)
+				if is_shared {
+					arg_type = arg_type.set_flag(.shared_f)
+				}
+				if is_atomic {
+					arg_type = arg_type.set_flag(.atomic_f)
+				}
 			}
 			if is_variadic {
 				arg_type = arg_type.set_flag(.variadic)
@@ -420,7 +441,9 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 		}
 	} else {
 		for p.tok.kind != .rpar {
-			mut is_mut := p.tok.kind == .key_mut
+			is_shared := p.tok.kind == .key_shared
+			is_atomic := p.tok.kind == .key_atomic
+			mut is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
 			if is_mut {
 				p.next()
 			}
@@ -445,9 +468,23 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 			mut typ := p.parse_type()
 			if is_mut {
 				if !typ.has_flag(.generic) {
-					p.check_fn_mutable_arguments(typ, pos)
+					if is_shared {
+						p.check_fn_shared_arguments(typ, pos)
+					} else if is_atomic {
+						p.check_fn_atomic_arguments(typ, pos)
+					} else {
+						p.check_fn_mutable_arguments(typ, pos)
+					}
+				} else if is_shared || is_atomic {
+					p.error_with_pos('generic object cannot be `atomic` or `shared`', pos)
 				}
 				typ = typ.set_nr_muls(1)
+				if is_shared {
+					typ = typ.set_flag(.shared_f)
+				}
+				if is_atomic {
+					typ = typ.set_flag(.atomic_f)
+				}
 			}
 			if is_variadic {
 				typ = typ.set_flag(.variadic)
@@ -487,6 +524,22 @@ fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position)
 	}
 }
 
+fn (mut p Parser) check_fn_shared_arguments(typ table.Type, pos token.Position) {
+	sym := p.table.get_type_symbol(typ)
+	if sym.kind !in [.array, .struct_, .map, .placeholder] && !typ.is_ptr() {
+		p.error_with_pos('shared arguments are only allowed for arrays, maps, and structs\n', pos)
+	}
+}
+
+fn (mut p Parser) check_fn_atomic_arguments(typ table.Type, pos token.Position) {
+	sym := p.table.get_type_symbol(typ)
+	if sym.kind !in [.u32, .int, .u64] {
+		p.error_with_pos('atomic arguments are only allowed for 32/64 bit integers\n' +
+			'use shared arguments instead: `fn foo(atomic n $sym.name) {` => `fn foo(shared n $sym.name) {`',
+			pos)
+	}
+}
+
 fn (mut p Parser) fn_redefinition_error(name string) {
 	// Find where this function was already declared
 	// TODO
@@ -500,16 +553,12 @@ fn (mut p Parser) fn_redefinition_error(name string) {
 }
 
 fn have_fn_main(stmts []ast.Stmt) bool {
-	mut has_main_fn := false
 	for stmt in stmts {
-		match stmt {
-			ast.FnDecl {
-				if stmt.name == 'main' {
-					has_main_fn = true
-				}
+		if stmt is ast.FnDecl {
+			if stmt.name == 'main.main' && stmt.mod == 'main' {
+				return true
 			}
-			else {}
 		}
 	}
-	return has_main_fn
+	return false
 }

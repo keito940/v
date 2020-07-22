@@ -4,6 +4,7 @@
 module parser
 
 import v.ast
+import v.table
 
 fn (mut p Parser) assign_stmt() ast.Stmt {
 	return p.partial_assign_stmt(p.expr_list())
@@ -14,8 +15,7 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) {
 		ast.Ident {
 			for expr in exprs {
 				if expr is ast.Ident {
-					ident := expr as ast.Ident
-					if ident.name == val.name {
+					if expr.name == val.name {
 						p.error_with_pos('undefined variable: `$val.name`', val.pos)
 					}
 				}
@@ -44,18 +44,34 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) {
 }
 
 fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
-	match val {
-		ast.Ident { for expr in exprs {
+	val_ := val
+	match val_ {
+		ast.Ident {
+			for expr in exprs {
 				if expr is ast.Ident {
-					ident := expr as ast.Ident
-					if ident.name == val.name {
+					if expr.name == val_.name {
 						return true
 					}
 				}
-			} }
-		ast.InfixExpr { return p.check_cross_variables(exprs, val.left) || p.check_cross_variables(exprs, val.right) }
-		ast.PrefixExpr { return p.check_cross_variables(exprs, val.right) }
-		ast.PostfixExpr { return p.check_cross_variables(exprs, val.expr) }
+			}
+		}
+		ast.IndexExpr {
+			for expr in exprs {
+				if expr.str() == val.str() {
+					return true
+				}
+			}
+		}
+		ast.InfixExpr { return p.check_cross_variables(exprs, val_.left) || p.check_cross_variables(exprs, val_.right) }
+		ast.PrefixExpr { return p.check_cross_variables(exprs, val_.right) }
+		ast.PostfixExpr { return p.check_cross_variables(exprs, val_.expr) }
+		ast.SelectorExpr {
+			for expr in exprs {
+				if expr.str() == val.str() {
+					return true
+				}
+			}
+		}
 		else {}
 	}
 	return false
@@ -77,6 +93,12 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 		// a, b = b, a
 		for r in right {
 			has_cross_var = p.check_cross_variables(left, r)
+			if op !in [.assign, .decl_assign] {
+				p.error('unexpected $op.str(), expecting := or = or comma')
+			}
+			if has_cross_var {
+				break
+			}
 		}
 	}
 	for i, lx in left {
@@ -86,16 +108,22 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 					if p.scope.known_var(lx.name) {
 						p.error_with_pos('redefinition of `$lx.name`', lx.pos)
 					}
+					mut share := table.ShareType(0)
+					if lx.info is ast.IdentVar {
+						share = (lx.info as ast.IdentVar).share
+					}
 					if left.len == right.len {
 						p.scope.register(lx.name, ast.Var{
 							name: lx.name
 							expr: right[i]
+							share: share
 							is_mut: lx.is_mut || p.inside_for
 							pos: lx.pos
 						})
 					} else {
 						p.scope.register(lx.name, ast.Var{
 							name: lx.name
+							share: share
 							is_mut: lx.is_mut || p.inside_for
 							pos: lx.pos
 						})

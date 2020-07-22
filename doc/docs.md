@@ -36,7 +36,7 @@ you can do in V.
     * [Match](#match)
     * [Defer](#defer)
 * [Structs](#structs)
-    * [Short struct init syntax](#short-struct-initialization-syntax)
+    * [Trailing struct literal syntax](#short-struct-initialization-syntax)
     * [Access modifiers](#access-modifiers)
     * [Methods](#methods)
 * [println](#println)
@@ -45,6 +45,7 @@ you can do in V.
 
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
+    * [Mutable arguments](#mutable-arguments)
     * [Anonymous & high order functions](#anonymous--high-order-functions)
 * [References](#references)
 * [Modules](#modules)
@@ -97,7 +98,7 @@ fn main() {
 ```
 Save that snippet into a file `hello.v` . Now do: `v run hello.v` .
 
-> That is assuming you have symlinked your V with `v symlink`, as described 
+> That is assuming you have symlinked your V with `v symlink`, as described
 [here](https://github.com/vlang/v/blob/master/README.md#symlinking).
 If you have not yet, you have to type the path to V manually.
 
@@ -107,7 +108,7 @@ Congratulations - you just wrote your first V program, and executed it!
 See `v help` for all supported commands.
 
 In the above example, you can see that functions are declared with `fn`.
-The return type goes after the function name. In this case `main` doesn't 
+The return type goes after the function name. In this case `main` doesn't
 return anything, so the return type can be omitted.
 
 As in many other languages (such as C, Go and Rust), `main` is an entry point.
@@ -160,7 +161,7 @@ This simplifies the code and improves maintainability and readability.
 
 Functions can be used before their declaration:
 `add` and `sub` are declared after `main`, but can still be called from `main`.
-This is true for all declarations in V and eliminates the need of header files
+This is true for all declarations in V and eliminates the need for header files
 or thinking about the order of files and declarations.
 
 <p>&nbsp;</p>
@@ -210,7 +211,7 @@ way to declare variables in V. This means that variables always have an initial
 value.
 
 The variable's type is inferred from the value on the right hand side.
-To force a different type, use type conversion:
+To choose a different type, use type conversion:
 the expression `T(v)` converts the value `v` to the
 type `T`.
 
@@ -252,6 +253,8 @@ fn main() {
     age := 21
 }
 ```
+
+### Declaration errors
 
 In development mode the compiler will warn you that you haven't used the variable (you'll get an "unused variable" warning).
 In production mode (enabled by passing the `-prod` flag to v – `v -prod foo.v`) it will not compile at all (like in Go).
@@ -380,16 +383,85 @@ s := r'hello\nworld'
 println(s) // "hello\nworld"
 ```
 
+### Numbers
+
+```v
+a := 123
+```
+This will assign the value of 123 to `a`. By default `a` will have the
+type `int`.
+
+You can also use hexadecimal notation for integer literals:
+```v
+a := 0x7B
+```
+... or binary notation for integer literals:
+```v
+a := 0b01111011
+```
+... or octal notation for specifying integer literals:
+```v
+a := 0o173
+```
+
+All of these will assign the same value 123 to `a`. `a` will have the
+type `int` no matter what notation you have used for the integer literal.
+
+
+If you want a different type of integer, you can use casting:
+```v
+a := i64(123)
+b := byte(42)
+c := i16(12345)
+```
+
+Assigning floating point numbers works the same way:
+```v
+f := 1.0
+f1 := f64(3.14)
+f2 := f32(3.14)
+```
+If you do not specify the type explicitly, by default float literals 
+will have the type of `f64`.
+
 ### Arrays
 
 ```v
 mut nums := [1, 2, 3]
 println(nums) // "[1, 2, 3]"
 println(nums[1]) // "2"
+nums[1] = 5
+println(nums) // "[1, 5, 3]"
 
+println(nums.len) // "3"
+nums = [] // The array is now empty
+println(nums.len) // "0"
+
+// Declare an empty array:
+users := []int{}
+
+// We can also preallocate a certain amount of elements.
+ids := []int{ len: 50, init: 0 } // This creates an array with 50 zeros
+```
+
+The type of an array is determined by the first element:
+* `[1, 2, 3]` is an array of ints (`[]int`).
+* `['a', 'b']` is an array of strings (`[]string`).
+
+If V is unable to infer the type of an array, the user can explicitly specify it for the first element: `[byte(0x0E), 0x1F, 0xBA, 0x0E]`
+
+V arrays are homogeneous (all elements must have the same type). This means that code like `[1, 'a']` will not compile.
+
+`.len` field returns the length of the array. Note that it's a read-only field,
+and it can't be modified by the user. Exported fields are read-only by default in V.
+See [Access modifiers](#access-modifiers).
+
+```v
+mut nums := [1, 2, 3]
 nums << 4
 println(nums) // "[1, 2, 3, 4]"
 
+// append array
 nums << [5, 6, 7]
 println(nums) // "[1, 2, 3, 4, 5, 6, 7]"
 
@@ -399,31 +471,35 @@ names << 'Sam'
 // names << 10  <-- This will not compile. `names` is an array of strings.
 println(names.len) // "3"
 println('Alex' in names) // "false"
-
-names = [] // The array is now empty
-
-// Declare an empty array:
-users := []User{}
-
-// We can also preallocate a certain amount of elements.
-ids := []int{ len: 50, init: 0 } // This creates an array with 50 zeros
 ```
-
-The type of an array is determined by the first element: `[1, 2, 3]` is an array of ints (`[]int`).
-
-`['a', 'b']` is an array of strings (`[]string`).
-
-If V is unable to infer the type of an array, the user can explicitly specify it for the first element: `[byte(0x0E), 0x1F, 0xBA, 0x0E]`
-
-V arrays are homogeneous (all elements must have the same type). This means that code like `[1, 'a']` will not compile.
 
 `<<` is an operator that appends a value to the end of the array.
 It can also append an entire array.
 
-`.len` field returns the length of the array. Note, that it's a read-only field,
-and it can't be modified by the user. Exported fields are read-only by default in V.
+`val in array` returns true if the array contains `val`. See [`in` operator](#in-operator).
 
-`val in array` returns true if the array contains `val`.
+&nbsp;
+
+During initialization you can specify the capacity of the array (`cap`), its initial length (`len`),
+and the default element (`init`).
+
+Setting the capacity improves performance of insertions, as it reduces the amount of reallocations in
+dynamic arrays:
+
+```v
+numbers := []int{ cap: 1000 }
+// Now adding new elements is as efficient as setting them directly
+for i in 0 .. 1000 {
+    numbers << i
+    // same as
+    // numbers[i] = i
+}
+```
+
+`[]int{ len: 5, init: -1 }` will create `[-1, -1, -1, -1, -1]`.
+
+
+#### Array methods
 
 All arrays can be easily printed with `println(arr)` and converted to a string
 with `s := arr.str()`.
@@ -506,6 +582,32 @@ else {
 println(s) // "odd"
 ```
 
+#### Is check
+You can check sum types using `if` like `match`ing them.
+```v
+struct Abc {
+    val string
+}
+struct Xyz {
+    foo string
+}
+type Alphabet = Abc | Xyz
+
+x := Alphabet(Abc{'test'}) // sum type
+if x is Abc {
+    // x is automatically castet to Abc and can be used here
+    println(x)
+}
+```
+
+If you have a struct field which should be checked, there is also a way to name a alias.
+```
+if x.bar is MyStruct as bar {
+    // x.bar cannot be castet automatically, instead you say "as bar" which creates a variable with the MyStruct typing
+    println(bar)
+}
+```
+
 ### In operator
 
 `in` allows to check whether an array or a map contains an element.
@@ -554,12 +656,13 @@ If an index is required, an alternative form `for index, value in` can be used.
 Note, that the value is read-only. If you need to modify the array while looping, you have to use indexing:
 
 ```v
-mut numbers := [1, 2, 3, 4, 5]
-for i, num in numbers {
-    println(num)
-    numbers[i] = 0
+mut numbers := [0, 1, 2]
+for i, _ in numbers {
+    numbers[i]++
 }
+println(numbers) // [1, 2, 3]
 ```
+When an identifier is just a single underscore, it is ignored.
 
 ```v
 mut sum := 0
@@ -616,7 +719,13 @@ match os {
     'linux'  { println('Linux.') }
     else     { println(os) }
 }
+```
 
+A match statement is a shorter way to write a sequence of `if - else` statements.
+When a matching branch is found, the following statement block will be run.
+The else branch will be run when no other branches match.
+
+```v
 number := 2
 s := match number {
     1    { 'one' }
@@ -625,9 +734,7 @@ s := match number {
 }
 ```
 
-A match statement is a shorter way to write a sequence of `if - else` statements.
-When a matching branch is found, the following statement block will be run, and the final expression will be returned.
-The else branch will be evaluated when no other branches match.
+A match expression returns the final expression from each branch.
 
 ```v
 enum Color {
@@ -638,15 +745,16 @@ enum Color {
 
 fn is_red_or_blue(c Color) bool {
     return match c {
-        .red  { true  }
-        .blue { true  }
-        else  { false }
+        .red   { true  }
+        .blue  { true  }
+        .green { false }
     }
 }
 ```
 
 A match statement can also be used to branch on the variants of an `enum`
-by using the shorthand `.variant_here` syntax.
+by using the shorthand `.variant_here` syntax. An `else` branch is not allowed
+when all the branches are exhaustive.
 
 ### Defer
 
@@ -674,13 +782,23 @@ struct Point {
     y int
 }
 
-p := Point{
+mut p := Point{
     x: 10
     y: 20
 }
 
 println(p.x) // Struct fields are accessed using a dot
+
+// Alternative literal syntax for structs with 3 fields or fewer
+p = Point{10, 20}
+assert p.x == 10
+
+// you can omit the struct name when it's already known
+p = {x: 30, y: 4}
+assert p.y == 4
 ```
+
+Omitting the struct name also works for function arguments.
 
 <p>&nbsp;</p>
 
@@ -688,7 +806,6 @@ Structs are allocated on the stack. To allocate a struct on the heap
 and get a reference to it, use the `&` prefix:
 
 ```v
- // Alternative initialization syntax for structs with 3 fields or fewer
 p := &Point{10, 10}
 // References have the same syntax for accessing fields
 println(p.x)
@@ -731,9 +848,10 @@ All struct fields are zeroed by default during the creation of the struct. Array
 It's also possible to define custom default values.
 
 
-### Short struct initialization syntax
+<a id='short-struct-initialization-syntax' />
+### Trailing struct literal syntax
 
-There are no default function argument values or named arguments, for that the short struct initialization syntax can be used instead:
+There are no default function arguments or named arguments, for that trailing struct literal syntax can be used instead:
 
 ```v
 struct ButtonConfig {
@@ -751,7 +869,9 @@ fn new_button(c ButtonConfig) &Button {
     }
 }
 
-button := new_button(text:'Click me', width:100) // the height is unset, so it's 20, the default value
+button := new_button(text:'Click me', width:100)
+// the height is unset, so it's the default value
+assert button.height == 20
 ```
 
 As you can see, we can use
@@ -766,7 +886,7 @@ instead of
 new_button(ButtonConfig{text:'Click me', width:100})
 ```
 
-This only works with functions that have a single struct argument.
+This only works for functions that have a struct for the last argument.
 
 ### Access modifiers
 
@@ -848,10 +968,15 @@ but a short, preferably one letter long, name.
 V functions are pure by default, meaning that their return values are a function of their arguments only,
 and their evaluation has no side effects.
 
-This is achieved by lack of global variables and all function arguments being immutable by default,
-even when references are passed.
+This is achieved by a lack of global variables and all function arguments being immutable by default,
+even when [references](#references) are passed.
 
 V is not a purely functional language however.
+
+There is a compiler flag to enable global variables (`--enable-globals`), but this is
+intended for low-level applications like kernels and drivers.
+
+### Mutable arguments
 
 It is possible to modify function arguments by using the keyword `mut`:
 
@@ -893,7 +1018,7 @@ It is preferable to return values instead of modifying arguments.
 Modifying arguments should only be done in performance-critical parts of your application
 to reduce allocations and copying.
 
-For this reason V doesn't allow the modification of arguments with primative types such as integers. Only more complex types such as arrays and maps may be modified.
+For this reason V doesn't allow the modification of arguments with primitive types such as integers. Only more complex types such as arrays and maps may be modified.
 
 Use `user.register()` or `user = register(user)`
 instead of `register(mut user)`.
@@ -1003,14 +1128,13 @@ struct Color {
         b int
 }
 
-pub fn (c Color) str() string { return '{$c.r, $c.g, $c.b}' }
-
 fn rgb(r, g, b int) Color { return Color{r: r, g: g, b: b} }
 
 const (
     numbers = [1, 2, 3]
 
     red  = Color{r: 255, g: 0, b: 0}
+    // evaluate function call at compile-time
     blue = rgb(0, 0, 255)
 )
 
@@ -1048,7 +1172,20 @@ println(User{name:'Bob', age:20}) // "User{name:'Bob', age:20}"
 ```
 
 If you want to define a custom print value for your type, simply define a
-`.str() string` method.
+`.str() string` method:
+
+```v
+struct Color {
+    r int
+    g int
+    b int
+}
+
+pub fn (c Color) str() string { return '{$c.r, $c.g, $c.b}' }
+
+red := Color{r: 255, g: 0, b: 0}
+println(red)
+```
 
 If you don't want to print a newline, use `print()` instead.
 
@@ -1103,9 +1240,8 @@ setup/initialization code when imported (perhaps you want to call
 some C library functions), write a module `init` function inside the module:
 
 ```v
-fn init() int {
+fn init() {
     // your setup code here ...
-    return 1
 }
 ```
 
@@ -1164,76 +1300,86 @@ println(color) // "1"  TODO: print "green"?
 
 ### Sum types
 
+A sum type instance can hold a value of several different types. Use the `type`
+keyword to declare a sum type:
+
 ```v
-type Expr = BinaryExpr | UnaryExpr | IfExpr
+struct Moon {}
+struct Mars {}
+struct Venus {}
 
-struct BinaryExpr{ ... }
-struct UnaryExpr{ ... }
-struct IfExpr{ ... }
+type World = Moon | Mars | Venus
 
-struct CallExpr {
-	args []Expr
-	...
-}
+sum := World(Moon{})
+```
 
-fn (mut p Parser) expr(precedence int) Expr {
-	match p.tok {
-		.key_if { return IfExpr{} }
-		...
-		else    { return BinaryExpr{} }
-	}
-}
+To check whether a sum type instance holds a certain type, use `sum is Type`.
+To cast a sum type to one of its variants you use `sum as Type`:
 
-fn gen(expr Expr) {
-	match expr {
-		IfExpr { gen_if(expr) } // `expr` is cast to the matched type automatically
-		...
-	}
-}
+```v
+fn (m Mars) dust_storm() bool
 
-fn gen_if(expr IfExpr) {
-	...
+fn main() {
+    mut w := World(Moon{})
+    assert w is Moon
+
+    w = Mars{}
+    // use `as` to access the Mars instance
+    mars := w as Mars
+    if mars.dust_storm() {
+        println('bad weather!')
+    }
 }
 ```
 
-To check whether a sum type is a certain type, use `is`:
+You can also use `match` to determine the variant:
 
 ```v
-println(expr is IfExpr)
+fn open_parachutes(n int)
+
+fn land(w World) {
+    match w {
+        Moon {} // no atmosphere
+        Mars {
+            // light atmosphere
+            open_parachutes(3)
+        }
+        Venus {
+            // heavy atmosphere
+            open_parachutes(1)
+        }
+    }
+}
 ```
 
-To cast a sum type to one of it's variants you use `as`:
+`match` must have a pattern for each variant or have an `else` branch.
 
-```v
-bin_expr := expr as BinaryExpr
-```
-
-You can also use match to determine the variant & and cast to it at the same time.
-There are 3 ways to access the cast variant inside a match branch:
-- the `it` variable
+There are 2 ways to access the cast variant inside a match branch:
 - the shadowed match variable
 - using `as` to specify a variable name
 
 ```v
-    fn binary_expr(bx BinaryExpr) {...}
-    fn unary_expr(ux UnaryExpr) {...}
-    fn if_expr(ix IfExpr) {...}
+fn (m Moon) moon_walk()
+fn (m Mars) shiver()
+fn (v Venus) sweat()
 
-        // using `it`
-	match expr {
-		BinaryExpr { binary_expr(it) }
-		...
-	}
-        // using the shadowed variable, in this case `expr`
-	match expr {
-		UnaryExpr { unary_expr(expr) }
-		...
-	}
-        // using `as` to specify a variable
-	match expr as actual_expr {
-		IfExpr { if_expr(actual_expr) }
-		...
-	}
+fn pass_time(w World) {
+    match w {
+        // using the shadowed match variable, in this case `w`
+        Moon { w.moon_walk() }
+        Mars { w.shiver() }
+        else {}
+    }
+    // using `as` to specify a name for each value
+    match w as var {
+        Mars  { var.shiver() }
+        Venus { var.sweat() }
+        else {
+            // w is of type World
+            assert w is Moon
+        }
+    }
+}
 ```
 
 Note: shadowing only works when the match expression is a variable. It will not work on struct fields, arrays indexing, or map key lookup.
@@ -1269,7 +1415,7 @@ fn (r Repo) find_user_by_id(id int) ?User {
 fn main() {
     repo := new_repo()
     user := repo.find_user_by_id(10) or { // Option types must be handled by `or` blocks
-        return  // `or` block must end with `return`, `break`, or `continue`
+        return
     }
     println(user.id) // "10"
     println(user.name) // "Charles"
@@ -1285,6 +1431,7 @@ If you don't need to return an error message, you can simply `return none` (this
 
 This is the primary mechanism for error handling in V. They are still values, like in Go,
 but the advantage is that errors can't be unhandled, and handling them is a lot less verbose.
+Unlike other languages, V does not handle exceptions with `throw/try/catch` blocks.
 
 `err` is defined inside an `or` block and is set to the string message passed
 to the `error()` function. `err` is empty if `none` was returned.
@@ -1296,7 +1443,9 @@ user := repo.find_user_by_id(7) or {
 }
 ```
 
-You can also propagate errors:
+There are three ways of handling an optional.
+
+The first method is to propagate the error:
 
 ```v
 resp := http.get(url)?
@@ -1304,7 +1453,8 @@ println(resp.text)
 ```
 
 `http.get` returns `?http.Response`. Because it was called with `?`, the error will be propagated to the calling function
-(which must return an optional). If it is used in the `main()` function it will cause a panic.
+(which must return an optional as well). If it is used in the `main()` function it will `panic` instead, since the error
+cannot be propagated any further.
 
 The code above is essentially a condensed version of
 
@@ -1313,6 +1463,31 @@ resp := http.get(url) or {
     return error(err)
 }
 println(resp.text)
+```
+
+The second is to break from execution early:
+
+```v
+user := repo.find_user_by_id(7) or {
+    return
+}
+```
+
+Here, you can either call `panic()` or `exit()`, which will stop the execution of the entire program,
+or use a control flow statement (`return`, `break`, `continue`, etc) to break from the current block.
+Note that `break` and `continue` can only be used inside a `for` loop.
+
+The third method is to provide a default value at the end of the `or` block. In case of an error,
+that value would be assigned instead, so it must have the same type as the `Option` being handled.
+
+```v
+fn do_something(s string) ?string {
+    if s == 'foo' { return 'foo' }
+    return error('invalid string') // Could be `return none` as well
+}
+
+a := do_something('foo') or { 'default' } // a will be 'foo'
+b := do_something('bar') or { 'default' } // b will be 'default'
 ```
 
 V does not have a way to forcibly "unwrap" an optional (as other languages do, for instance Rust's `unwrap()`
@@ -1363,7 +1538,7 @@ mut:
 
 fn (mut b St) g() {
 	...
-	b.mtx.lock()
+	b.mtx.m_lock()
 	// read/modify/write b.x
 	...
 	b.mtx.unlock()
@@ -1377,7 +1552,7 @@ fn caller() {
 	}
 	go a.g()
 	...
-	a.mtx.lock()
+	a.mtx.m_lock()
 	// read/modify/write a.x
 	...
 	a.mtx.unlock()
@@ -1607,15 +1782,29 @@ fn main(){
 #flag -lsqlite3
 #include "sqlite3.h"
 
-struct C.sqlite3
-struct C.sqlite3_stmt
+// See also the example from https://www.sqlite.org/quickstart.html
+struct C.sqlite3{}
+struct C.sqlite3_stmt{}
 
-fn C.sqlite3_open(charptr, C.sqlite3)
-fn C.sqlite3_column_int(stmt C.sqlite3_stmt, n int) int
-// Or just define the type of parameter & leave C. prefix
-fn C.sqlite3_prepare_v2(sqlite3, charptr, int, sqlite3_stmt, charptr) int
-fn C.sqlite3_step(sqlite3)
-fn C.sqlite3_finalize(sqlite3_stmt)
+type FnSqlite3Callback fn(voidptr, int, &charptr, &charptr) int
+
+fn C.sqlite3_open(charptr, &&C.sqlite3) int
+fn C.sqlite3_close(&C.sqlite3) int
+fn C.sqlite3_column_int(stmt &C.sqlite3_stmt, n int) int
+// ... you can also just define the type of parameter & leave out the C. prefix
+fn C.sqlite3_prepare_v2(&sqlite3, charptr, int, &&sqlite3_stmt, &charptr) int
+fn C.sqlite3_step(&sqlite3_stmt)
+fn C.sqlite3_finalize(&sqlite3_stmt)
+fn C.sqlite3_exec(db &sqlite3, sql charptr, FnSqlite3Callback, cb_arg voidptr, emsg &charptr) int
+fn C.sqlite3_free(voidptr)
+
+fn my_callback(arg voidptr, howmany int, cvalues &charptr, cnames &charptr) int {
+    for i in 0..howmany {
+	    print('| ${cstring_to_vstring(cnames[i])}: ${cstring_to_vstring(cvalues[i]):20} ')
+	}
+    println('|')
+    return 0
+}
 
 fn main() {
     path := 'users.db'
@@ -1627,7 +1816,16 @@ fn main() {
     C.sqlite3_step(stmt)
     nr_users := C.sqlite3_column_int(stmt, 0)
     C.sqlite3_finalize(stmt)
-    println(nr_users)
+    println('There are $nr_users users in the database.')
+    //
+    error_msg := charptr(0)
+    query_all_users := 'select * from users'
+    rc := C.sqlite3_exec(db, query_all_users.str, my_callback, 7, &error_msg)
+    if rc != C.SQLITE_OK {
+        eprintln( cstring_to_vstring(error_msg) )
+        C.sqlite3_free(error_msg)
+    }
+    C.sqlite3_close(db)
 }
 ```
 
@@ -1712,10 +1910,9 @@ To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 To debug issues in the generated C code, you can pass these flags:
 
 - `-cg` - produces a less optimized executable with more debug information in it.
-- `-keepc` - keep the generated C file, so your debugger can also use it.
 - `-showcc` - prints the C command that is used to build the program.
 
-For the best debugging experience, you can pass all of them at the same time: `v -cg -keepc -showcc yourprogram.v` , then just run your debugger (gdb/lldb) or IDE on the produced executable `yourprogram`.
+For the best debugging experience, you can pass all of them at the same time: `v -cg -showcc yourprogram.v` , then just run your debugger (gdb/lldb) or IDE on the produced executable `yourprogram`.
 
 If you just want to inspect the generated C code, without further compilation, you can also use the `-o` flag (e.g. `-o file.c`). This will make V produce the `file.c` then stop.
 
@@ -1772,9 +1969,9 @@ eprintln('$vm.name $vm.version\n $vm.description')
 
 ## Performance tuning
 
-The generated C code is usually fast enough, when you compile your code 
-with `-prod`. There are some situations though, where you may want to give 
-additional hints to the C compiler, so that it can further optimize some 
+The generated C code is usually fast enough, when you compile your code
+with `-prod`. There are some situations though, where you may want to give
+additional hints to the C compiler, so that it can further optimize some
 blocks of code.
 
 NB: These are *rarely* needed, and should not be used, unless you
@@ -1783,11 +1980,11 @@ To cite gcc's documentation: "programmers are notoriously bad at predicting
 how their programs actually perform".
 
 `[inline]` - you can tag functions with `[inline]`, so the C compiler will
-try to inline them, which in some cases, may be beneficial for performance, 
+try to inline them, which in some cases, may be beneficial for performance,
 but may impact the size of your executable.
 
-`if _likely_(bool expression) {` this hints the C compiler, that the passed 
-boolean expression is very likely to be true, so it can generate assembly 
+`if _likely_(bool expression) {` this hints the C compiler, that the passed
+boolean expression is very likely to be true, so it can generate assembly
 code, with less chance of branch misprediction. In the JS backend,
 that does nothing.
 
@@ -1909,7 +2106,7 @@ Run `v translate test.cpp` and V will generate `test.v`:
 
 ```v
 fn main {
-    mut s := []
+    mut s := []string{}
     s << 'V is '
     s << 'awesome'
     println(s.len)
@@ -2027,7 +2224,7 @@ On Unix-like platforms, the file can be run directly after making it executable 
 
 V has several attributes that modify the behavior of functions and structs.
 
-An attribute is specified inside `[]` right before the function/struct declaration and applies only to the following definition. 
+An attribute is specified inside `[]` right before the function/struct declaration and applies only to the following definition.
 
 ```v
 // Calling this function will result in a deprecation warning
@@ -2053,12 +2250,12 @@ fn bar() {
 }
 
 // For C interop only, tells V that the following struct is defined with `typedef struct` in C
-[typedef] 
+[typedef]
 struct C.Foo { }
 
-// Declare a function with WINAPI
+// Used in Win32 API code when you need to pass callback function
 [windows_stdcall]
-fn C.WinFunction()
+fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 ```
 
 
@@ -2066,16 +2263,18 @@ fn C.WinFunction()
 
 ## Appendix I: Keywords
 
-V has 23 keywords:
+V has 29 keywords (3 are literals):
 
 ```v
 as
+assert
 break
 const
 continue
 defer
 else
 enum
+false
 fn
 for
 go
@@ -2087,13 +2286,17 @@ interface
 is
 match
 module
+mut
 none
 or
 pub
 return
 struct
+true
 type
+unsafe
 ```
+See also [Types](#types).
 
 ## Appendix II: Operators
 

@@ -63,7 +63,8 @@ fn color(kind, msg string) string {
 }
 
 // formatted_error - `kind` may be 'error' or 'warn'
-pub fn formatted_error(kind, emsg, filepath string, pos token.Position) string {
+pub fn formatted_error(kind, omsg, filepath string, pos token.Position) string {
+	emsg := omsg.replace('main.', '')
 	mut path := filepath
 	verror_paths_override := os.getenv('VERROR_PATHS')
 	if verror_paths_override == 'absolute' {
@@ -109,8 +110,8 @@ pub fn source_context(kind, source string, column int, pos token.Position) []str
 	tab_spaces := '    '
 	for iline := bline; iline <= aline; iline++ {
 		sline := source_lines[iline]
-		start_column := imin(column, sline.len)
-		end_column := imin(column + pos.len, sline.len)
+		start_column := imax(0, imin(column, sline.len))
+		end_column := imax(0, imin(column + imax(0, pos.len), sline.len))
 		cline := if iline == pos.line_nr {
 			sline[..start_column] + color(kind, sline[start_column..end_column]) + sline[end_column..]
 		} else {
@@ -169,8 +170,8 @@ pub fn color_compare_files(diff_cmd, file1, file2 string) string {
 		        ' --show-function-line="fn " $other_options "$file1" "$file2" '
 		x := os.exec(full_cmd) or {
 			return 'comparison command: `${full_cmd}` failed'
-        }
-        return x.output.trim_right('\r\n')
+		}
+		return x.output.trim_right('\r\n')
     }
     return ''
 }

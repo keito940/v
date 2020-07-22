@@ -16,17 +16,14 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 	pos := p.tok.position()
 	mut branches := []ast.IfBranch{}
 	mut has_else := false
+	mut comments := []ast.Comment{}
 	for p.tok.kind in [.key_if, .key_else] {
 		p.inside_if = true
 		start_pos := p.tok.position()
-		mut comment := ast.Comment{}
 		if p.tok.kind == .key_if {
 			p.next()
 		} else {
-			// if p.tok.kind == .comment {
-			// p.error('place comments inside {}')
-			// }
-			// comment = p.check_comment()
+			comments = p.eat_comments()
 			p.check(.key_else)
 			if p.tok.kind == .key_if {
 				p.next()
@@ -34,11 +31,14 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 				has_else = true
 				p.inside_if = false
 				end_pos := p.prev_tok.position()
+				body_pos := p.tok.position()
 				branches << ast.IfBranch{
 					stmts: p.parse_block()
 					pos: start_pos.extend(end_pos)
-					comment: comment
+					body_pos: body_pos.extend(p.tok.position())
+					comments: comments
 				}
+				comments = []
 				break
 			}
 		}
@@ -64,7 +64,24 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 		} else {
 			cond = p.expr(0)
 		}
+		mut left_as_name := ''
+		is_infix := cond is ast.InfixExpr
+		if is_infix {
+			infix := cond as ast.InfixExpr
+			is_is_cast := infix.op == .key_is
+			is_ident := infix.left is ast.Ident
+			left_as_name = if is_is_cast && p.tok.kind == .key_as {
+				p.next()
+				p.check_name()
+			} else if is_ident {
+				ident := infix.left as ast.Ident
+				ident.name
+			} else {
+				''
+			}
+		}
 		end_pos := p.prev_tok.position()
+		body_pos := p.tok.position()
 		p.inside_if = false
 		stmts := p.parse_block()
 		if is_or {
@@ -74,8 +91,11 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			cond: cond
 			stmts: stmts
 			pos: start_pos.extend(end_pos)
-			comment: ast.Comment{}
+			body_pos: body_pos.extend(p.tok.position())
+			comments: comments
+			left_as_name: left_as_name
 		}
+		comments = []
 		if p.tok.kind != .key_else {
 			break
 		}
@@ -116,10 +136,9 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .key_else {
 			is_else = true
 			p.next()
-		} else if p.tok.kind == .name && !(p.tok.lit == 'C' &&
-			p.peek_tok.kind == .dot) && (p.tok.lit in table.builtin_type_names ||
-			(p.tok.lit[0].is_capital() && !p.tok.lit.is_upper()) ||
-			(p.peek_tok.kind == .dot && p.peek_tok2.lit[0].is_capital())) {
+		} else if p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot) &&
+				(p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() ||
+				(p.peek_tok.kind == .dot && p.peek_tok2.lit[0].is_capital())) {
 			if var_name.len == 0 {
 				match cond {
 					ast.Ident {
@@ -180,6 +199,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		p.inside_match_body = true
 		stmts := p.parse_block()
 		p.inside_match_body = false
+		post_comments := p.eat_comments()
 		pos := token.Position{
 			line_nr: branch_first_pos.line_nr
 			pos: branch_first_pos.pos
@@ -191,6 +211,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			pos: pos
 			comment: comment
 			is_else: is_else
+			post_comments: post_comments
 		}
 		p.close_scope()
 		if p.tok.kind == .rcbr {

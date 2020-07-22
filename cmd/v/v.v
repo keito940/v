@@ -23,16 +23,12 @@ const (
 )
 
 fn main() {
-	main_v()
-}
-
-fn main_v() {
 	args := os.args[1..]
 	// args = 123
 	if args.len == 0 || args[0] in ['-', 'repl'] {
 		// Running `./v` without args launches repl
 		if args.len == 0 {
-			println('For usage information, quit V REPL using `exit` and use `v help`')
+			println('For usage information, quit V REPL and run `v help`')
 		}
 		util.launch_tool(false, 'vrepl', os.args[1..])
 		return

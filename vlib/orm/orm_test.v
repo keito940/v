@@ -197,6 +197,27 @@ fn test_orm_sqlite() {
 	}
 	assert z.len == 2
 	assert z[0].id == 3
+
+	oldest := sql db {
+		select from User order by age desc limit 1
+	}
+	assert oldest.age == 34
+
+	offs := 1
+
+	second_oldest := sql db {
+		select from User order by age desc limit 1 offset offs
+	}
+	assert second_oldest.age == 31
+
+	sql db {
+		delete from User where age == 34
+	}
+
+	updated_oldest := sql db {
+		select from User order by age desc limit 1
+	}
+	assert updated_oldest.age == 31
 }
 
 fn test_orm_pg() {

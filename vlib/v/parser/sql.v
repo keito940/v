@@ -42,6 +42,24 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	mut limit_expr := ast.Expr{}
 	mut has_offset := false
 	mut offset_expr := ast.Expr{}
+	mut has_order := false
+	mut order_expr := ast.Expr{}
+	mut has_desc := false
+	if p.tok.kind == .name && p.tok.lit == 'order' {
+		p.check_name() // `order`
+		order_pos := p.tok.position()
+		if p.tok.kind == .name && p.tok.lit == 'by' {
+			p.check_name() // `by`
+		} else {
+			p.error_with_pos('use `order by` in ORM queries', order_pos)
+		}
+		has_order = true
+		order_expr = p.expr(0)
+		if p.tok.kind == .name && p.tok.lit == 'desc' {
+			p.check_name() // `desc`
+			has_desc = true
+		}
+	}
 	if p.tok.kind == .name && p.tok.lit == 'limit' {
 		// `limit 1` means that a single object is returned
 		p.check_name() // `limit`
@@ -77,6 +95,9 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		limit_expr: limit_expr
 		has_offset: has_offset
 		offset_expr: offset_expr
+		has_order: has_order
+		order_expr: order_expr
+		has_desc: has_desc
 		is_array: !query_one
 		pos: pos
 	}
@@ -106,17 +127,19 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	}
 	mut inserted_var_name := ''
 	mut table_name := ''
-	expr := p.expr(0)
-	match expr {
-		ast.Ident {
-			if kind == .insert {
-				inserted_var_name = expr.name
-			} else if kind == .update {
-				table_name = expr.name
+	if kind != .delete {
+		expr := p.expr(0)
+		match expr {
+			ast.Ident {
+				if kind == .insert {
+					inserted_var_name = expr.name
+				} else if kind == .update {
+					table_name = expr.name
+				}
 			}
-		}
-		else {
-			p.error('can only insert variables')
+			else {
+				p.error('can only insert variables')
+			}
 		}
 	}
 	n = p.check_name() // into
@@ -139,7 +162,10 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 				break
 			}
 		}
+	} else if kind == .delete && n != 'from' {
+		p.error('expecting `from`')
 	}
+
 	mut table_type := table.Type(0)
 	mut where_expr := ast.Expr{}
 	if kind == .insert {
@@ -151,9 +177,15 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	} else if kind == .update {
 		if !p.pref.is_fmt {
 			// NB: in vfmt mode, v parses just a single file and table_name may not have been registered
-			idx := p.table.find_type_idx(table_name)
+			idx := p.table.find_type_idx(p.prepend_mod(table_name))
 			table_type = table.new_type(idx)
 		}
+		p.check_sql_keyword('where')
+		where_expr = p.expr(0)
+	} else if kind == .delete {
+		table_type = p.parse_type()
+		sym := p.table.get_type_symbol(table_type)
+		table_name = sym.name
 		p.check_sql_keyword('where')
 		where_expr = p.expr(0)
 	}

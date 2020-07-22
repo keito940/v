@@ -6,8 +6,6 @@ module builtin
 import strings
 import hash.wyhash
 
-fn C.memcmp(byteptr, byteptr, int) int
-
 /*
 This is a highly optimized hashmap implementation. It has several traits that
 in combination makes it very fast and memory efficient. Here is a short expl-
@@ -122,12 +120,14 @@ fn new_dense_array(value_bytes int) DenseArray {
 fn (mut d DenseArray) push(key string, value voidptr) u32 {
 	if d.cap == d.len {
 		d.cap += d.cap >> 3
-		d.keys = &string(C.realloc(d.keys, sizeof(string) * d.cap))
-		d.values = C.realloc(d.values, u32(d.value_bytes) * d.cap)
+		d.keys = &string(v_realloc(d.keys, sizeof(string) * d.cap))
+		d.values = v_realloc(d.values, u32(d.value_bytes) * d.cap)
 	}
 	push_index := d.len
 	d.keys[push_index] = key
-	C.memcpy(d.values + push_index * u32(d.value_bytes), value, d.value_bytes)
+	unsafe {
+		C.memcpy(d.values + push_index * u32(d.value_bytes), value, d.value_bytes)
+	}
 	d.len++
 	return push_index
 }
@@ -138,7 +138,9 @@ fn (d DenseArray) get(i int) voidptr {
 			panic('DenseArray.get: index out of range (i == $i, d.len == $d.len)')
 		}
 	}
-	return byteptr(d.keys) + i * int(sizeof(string))
+	unsafe {
+		return byteptr(d.keys) + i * int(sizeof(string))
+	}
 }
 
 // Move all zeros to the end of the array and resize array
@@ -152,9 +154,11 @@ fn (mut d DenseArray) zeros_to_end() {
 			d.keys[count] = d.keys[i]
 			d.keys[i] = tmp_key
 			// swap values (TODO: optimize)
-			C.memcpy(tmp_value, d.values + count * u32(d.value_bytes), d.value_bytes)
-			C.memcpy(d.values + count * u32(d.value_bytes), d.values + i * d.value_bytes, d.value_bytes)
-			C.memcpy(d.values + i * d.value_bytes, tmp_value, d.value_bytes)
+			unsafe {
+				C.memcpy(tmp_value, d.values + count * u32(d.value_bytes), d.value_bytes)
+				C.memcpy(d.values + count * u32(d.value_bytes), d.values + i * d.value_bytes, d.value_bytes)
+				C.memcpy(d.values + i * d.value_bytes, tmp_value, d.value_bytes)
+			}
 			count++
 		}
 	}
@@ -162,8 +166,8 @@ fn (mut d DenseArray) zeros_to_end() {
 	d.deletes = 0
 	d.len = count
 	d.cap = if count < 8 { u32(8) } else { count }
-	d.keys = &string(C.realloc(d.keys, sizeof(string) * d.cap))
-	d.values = C.realloc(d.values, u32(d.value_bytes) * d.cap)
+	d.keys = &string(v_realloc(d.keys, sizeof(string) * d.cap))
+	d.values = v_realloc(d.values, u32(d.value_bytes) * d.cap)
 }
 
 pub struct map {
@@ -206,7 +210,9 @@ fn new_map_1(value_bytes int) map {
 fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
 	mut out := new_map_1(value_bytes)
 	for i in 0 .. n {
-		out.set(keys[i], byteptr(values) + i * value_bytes)
+		unsafe {
+			out.set(keys[i], byteptr(values) + i * value_bytes)
+		}
 	}
 	return out
 }
@@ -258,8 +264,10 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 	if (probe_count << 1) == m.extra_metas {
 		m.extra_metas += extra_metas_inc
 		mem_size := (m.cap + 2 + m.extra_metas)
-		m.metas = &u32(C.realloc(m.metas, sizeof(u32) * mem_size))
-		C.memset(m.metas + mem_size - extra_metas_inc, 0, sizeof(u32) * extra_metas_inc)
+		unsafe {
+			m.metas = &u32(v_realloc(m.metas, sizeof(u32) * mem_size))
+			C.memset(m.metas + mem_size - extra_metas_inc, 0, sizeof(u32) * extra_metas_inc)
+		}
 		// Should almost never happen
 		if probe_count == 252 {
 			panic('Probe overflow')
@@ -282,7 +290,9 @@ fn (mut m map) set(k string, value voidptr) {
 	for meta == m.metas[index] {
 		kv_index := m.metas[index + 1]
 		if fast_string_eq(key, m.key_values.keys[kv_index]) {
-			C.memcpy(m.key_values.values + kv_index * u32(m.value_bytes), value, m.value_bytes)
+			unsafe {
+				C.memcpy(m.key_values.values + kv_index * u32(m.value_bytes), value, m.value_bytes)
+			}
 			return
 		}
 		index += 2
@@ -316,7 +326,7 @@ fn (mut m map) expand() {
 // the max_load_factor in an operation.
 fn (mut m map) rehash() {
 	meta_bytes := sizeof(u32) * (m.cap + 2 + m.extra_metas)
-	m.metas = &u32(C.realloc(m.metas, meta_bytes))
+	m.metas = &u32(v_realloc(m.metas, meta_bytes))
 	C.memset(m.metas, 0, meta_bytes)
 	for i := u32(0); i < m.key_values.len; i++ {
 		if m.key_values.keys[i].str == 0 {
@@ -362,7 +372,9 @@ fn (mut m map) get_and_set(key string, zero voidptr) voidptr {
 			if meta == m.metas[index] {
 				kv_index := m.metas[index + 1]
 				if fast_string_eq(key, m.key_values.keys[kv_index]) {
-					return voidptr(m.key_values.values + kv_index * u32(m.value_bytes))
+					unsafe {
+						return voidptr(m.key_values.values + kv_index * u32(m.value_bytes))
+					}
 				}
 			}
 			index += 2
@@ -383,7 +395,9 @@ fn (m map) get(key string, zero voidptr) voidptr {
 		if meta == m.metas[index] {
 			kv_index := m.metas[index + 1]
 			if fast_string_eq(key, m.key_values.keys[kv_index]) {
-				return voidptr(m.key_values.values + kv_index * u32(m.value_bytes))
+				unsafe {
+					return voidptr(m.key_values.values + kv_index * u32(m.value_bytes))
+				}
 			}
 		}
 		index += 2

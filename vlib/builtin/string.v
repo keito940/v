@@ -46,10 +46,18 @@ pub struct string {
 pub:
 	str byteptr // points to a C style 0 terminated string of bytes.
 	len int // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
-	is_lit bool
+mut:
+	is_lit int
 }
-	// mut:
-	// hash_cache int
+// mut:
+// hash_cache int
+//
+// NB string.is_lit is an enumeration of the following:
+// .is_lit == 0 => a fresh string, should be freed by autofree
+// .is_lit == 1 => a literal string from .rodata, should NOT be freed
+// .is_lit == -98761234 => already freed string, protects against double frees.
+//            ^^^^^^^^^ calling free on these is a bug.
+// Any other value means that the string has been corrupted.
 
 pub struct ustring {
 pub mut:
@@ -109,7 +117,7 @@ pub fn tos_lit(s charptr) string {
 	return string{
 		str: byteptr(s)
 		len: C.strlen(s)
-		is_lit:true
+		is_lit: 1
 	}
 }
 
@@ -141,7 +149,7 @@ pub fn (s string) cstr() byteptr {
 
 // cstring_to_vstring creates a copy of cstr and turns it into a v string
 pub fn cstring_to_vstring(cstr byteptr) string {
-	slen := C.strlen(cstr)
+	slen := C.strlen(charptr(cstr))
 	mut s := byteptr(memdup(cstr, slen + 1))
 	s[slen] = `\0`
 	return tos(s, slen)
@@ -149,7 +157,7 @@ pub fn cstring_to_vstring(cstr byteptr) string {
 
 pub fn (s string) replace_once(rep, with string) string {
 	index := s.index(rep) or {
-		return s
+		return s.clone()
 	}
 	return s.substr(0, index) + with + s.substr(index + rep.len, s.len)
 }
@@ -921,14 +929,14 @@ pub fn (s string) trim_right(cutset string) string {
 
 pub fn (s string) trim_prefix(str string) string {
 	if s.starts_with(str) {
-		return s.replace(str, "")
+		return s[str.len..]
 	}
 	return s
 }
 
 pub fn (s string) trim_suffix(str string) string {
 	if s.ends_with(str) {
-		return s.replace(str, "")
+		return s[..s.len-str.len]
 	}
 	return s
 }
@@ -1162,6 +1170,9 @@ pub fn (u ustring) at(idx int) string {
 }
 
 fn (u &ustring) free() {
+	$if prealloc {
+		return
+	}
 	u.runes.free()
 }
 
@@ -1186,10 +1197,18 @@ pub fn (c byte) is_letter() bool {
 }
 
 pub fn (s &string) free() {
-	if s.is_lit || s.len == 0 {
+	$if prealloc {
+		return
+	}
+	if s.is_lit == -98761234 {
+		C.printf('double string.free() detected\n')
+		return
+	}
+	if s.is_lit == 1 || s.len == 0 {
 		return
 	}
 	free(s.str)
+	s.is_lit = -98761234
 }
 
 // all_before('23:34:45.234', '.') == '23:34:45'
@@ -1313,13 +1332,13 @@ pub fn (c byte) is_white() bool {
 
 pub fn (s string) hash() int {
 	// mut h := s.hash_cache
-	mut h := 0
+	mut h := u32(0)
 	if h == 0 && s.len > 0 {
 		for c in s {
-			h = h * 31 + int(c)
+			h = h * 31 + u32(c)
 		}
 	}
-	return h
+	return int(h)
 }
 
 pub fn (s string) bytes() []byte {
@@ -1356,7 +1375,25 @@ pub fn (s string) fields() []string {
 }
 
 pub fn (s string) map(func fn(byte) byte) string {
-	return string(s.bytes().map(func(it)))
+	mut res := malloc(s.len + 1)
+	for i in 0..s.len {
+		res[i] = func(s[i])
+	}
+	return tos(res, s.len)
+}
+
+pub fn (s string) filter(func fn(b byte) bool) string {
+	mut new_len := 0
+	mut buf := malloc(s.len + 1)
+	for i in 0 .. s.len {
+		mut b := s[i]
+		if func(b) {
+			buf[new_len] = b
+			new_len++
+		}
+	}
+	buf[new_len] = 0
+	return string(buf, new_len)
 }
 
 // Allows multi-line strings to be formatted in a way that removes white-space

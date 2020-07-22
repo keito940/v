@@ -26,10 +26,12 @@ pub const (
 		'.html': 'text/html; charset=utf-8',
 		'.jpg': 'image/jpeg',
 		'.js': 'application/javascript',
-		'.wasm': 'application/wasm',
+		'.md': 'text/markdown; charset=utf-8',
 		'.pdf': 'application/pdf',
 		'.png': 'image/png',
 		'.svg': 'image/svg+xml',
+		'.txt': 'text/plain; charset=utf-8',
+		'.wasm': 'application/wasm',
 		'.xml': 'text/xml; charset=utf-8'
 	}
 	max_http_post_size = 1024 * 1024
@@ -47,9 +49,20 @@ pub:
 	// TODO Response
 pub mut:
 	form map[string]string
+	query map[string]string
 	headers string // response headers
 	done bool
 	page_gen_start i64
+	form_error string
+
+}
+
+pub struct Cookie {
+	name string
+	value string
+	exprires time.Time
+	secure bool
+	http_only bool
 }
 
 pub struct Result {}
@@ -92,10 +105,11 @@ pub fn (mut ctx Context) ok(s string) Result {
 	return Result{}
 }
 
-pub fn (mut ctx Context) redirect(url string) {
-	if ctx.done { return }
+pub fn (mut ctx Context) redirect(url string) Result {
+	if ctx.done { return Result{} }
 	ctx.done = true
-	ctx.conn.send_string('HTTP/1.1 302 Found\r\nLocation: ${url}${ctx.headers}\r\n${headers_close}') or { return }
+	ctx.conn.send_string('HTTP/1.1 302 Found\r\nLocation: ${url}${ctx.headers}\r\n${headers_close}') or { return Result{} }
+	return Result{}
 }
 
 pub fn (mut ctx Context) not_found() Result {
@@ -105,10 +119,17 @@ pub fn (mut ctx Context) not_found() Result {
 	return vweb.Result{}
 }
 
-pub fn (mut ctx Context) set_cookie(key, val string) {
+pub fn (mut ctx Context) set_cookie(cookie Cookie) {
+	secure := if cookie.secure { "Secure;" } else { "" }
+	http_only := if cookie.http_only { "HttpOnly" } else { "" }
+	ctx.add_header('Set-Cookie', '$cookie.name=$cookie.value; $secure $http_only')
+}
+
+pub fn (mut ctx Context) set_cookie_old(key, val string) {
 	// TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
 	//println('Set-Cookie $key=$val')
-	ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly')
+	//ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly')
+	ctx.add_header('Set-Cookie', '${key}=${val}; HttpOnly')
 }
 
 pub fn (mut ctx Context) set_content_type(typ string) {
@@ -195,6 +216,7 @@ pub fn run_app<T>(mut app T, port int) {
 }
 
 fn handle_conn<T>(conn net.Socket, mut app T) {
+	defer { conn.close() or {} }
 //fn handle_conn<T>(conn net.Socket, app_ T) T {
 	//mut app := app_
 	//first_line := strip(lines[0])
@@ -211,7 +233,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	if vals.len < 2 {
 		println('no vals for http')
 		conn.send_string(http_500) or {}
-		conn.close() or {}
 		return
 		//continue
 	}
@@ -254,13 +275,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		}
 	}
 
-	mut action := vals[1][1..].all_before('/')
-	if action.contains('?') {
-		action = action.all_before('?')
-	}
-	if action == '' {
-		action = 'index'
-	}
 	req := http.Request{
 		headers: http.parse_headers(headers) //s.split_into_lines())
 		data: strip(body)
@@ -273,7 +287,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		println('req.headers = ')
 		println(req.headers)
 		println('req.data="$req.data"' )
-		println('vweb action = "$action"')
+		//println('vweb action = "$action"')
 	}
 	//mut app := T{
 	app.vweb = Context{
@@ -292,7 +306,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		$if debug {
 			println('no vals for http')
 		}
-		conn.close() or {}
 		return
 		//continue
 	}
@@ -315,22 +328,109 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		data.free()
 		return
 	}
+	app.init()
 
 	// Call the right action
-	$if debug {
-		println('action=$action')
-	}
-	app.init()
-	app.$action()
-	/*
-	app.$action() or {
-		conn.send_string(http_404) or {}
-	}
-	*/
+	println('route matching...')
+	//t := time.ticks()
+	//mut action := ''
+	mut route_words := []string{}
+	mut url_words := vals[1][1..].split('/').filter(it != '')
 
-	conn.close() or {}
-	//app.reset()
-	return
+
+	if url_words.len == 0 {
+		app.index()
+		return
+	} else {
+		// Parse URL query
+		if url_words.last().contains('?') {
+			tmp_query := url_words.last().all_after('?').split('&').map(it.split('='))
+			url_words[url_words.len - 1] = url_words.last().all_before('?')
+			for data in tmp_query {
+				if data.len == 2 {
+					app.vweb.query[data[0]] = data[1]
+				}
+			}
+		}
+	}
+
+	mut vars := []string{cap: route_words.len}
+	mut action := ''
+	$for method in T {
+		if attrs == '' {
+			// No routing for this method. If it matches, call it and finish matching
+			// since such methods have a priority.
+			// For example URL `/register` matches route `/:user`, but `fn register()`
+			// should be called first.
+			if (req.method == 'GET' && url_words[0] == method && url_words.len == 1) || (req.method == 'POST' && url_words[0] + '_post' == method) {
+				println('easy match method=$method')
+				app.$method(vars)
+				return
+			}
+		} else {
+			route_words = attrs[1..].split('/')
+			if url_words.len == route_words.len || (url_words.len >= route_words.len - 1 && route_words.last().ends_with('...')) {
+				// match `/:user/:repo/tree` to `/vlang/v/tree`
+				mut matching := false
+				mut unknown := false
+				mut variables := []string{cap: route_words.len}
+				for i in 0..route_words.len {
+					if url_words.len == i {
+						variables << ''
+						matching = true
+						unknown = true
+						break
+					}
+					if url_words[i] == route_words[i] {
+						// no parameter
+						matching = true
+						continue
+					} else if route_words[i].starts_with(':') {
+						// is parameter
+						if i < route_words.len && !route_words[i].ends_with('...') {
+							// normal parameter
+							variables << url_words[i]
+						} else {
+							// array parameter only in the end
+							variables << url_words[i..].join('/')
+						}
+						matching = true
+						unknown = true
+						continue
+					} else {
+						matching = false
+						break
+					}
+				}
+				if matching && !unknown {
+					// absolute router words like `/test/site`
+					app.$method(vars)
+					return
+				} else if matching && unknown {
+					// router words with paramter like `/:test/site`
+					action = method
+					vars = variables
+				}
+			}
+		}
+	}
+	if action == '' {
+		// site not found
+		conn.send_string(http_404) or {}
+		return
+	}
+	send_action<T>(action, vars, mut app)
+}
+
+fn send_action<T>(action string, vars []string, mut app T) {
+	// TODO remove this function
+	$for method in T {
+		// search again for method
+		if action == method && attrs != '' {
+			// call action method
+			app.$method(vars)
+		}
+	}
 }
 
 fn (mut ctx Context) parse_form(s string) {
@@ -405,6 +505,10 @@ pub fn (mut ctx Context) handle_static(directory_path string) bool {
 pub fn (mut ctx Context) serve_static(url, file_path, mime_type string) {
 	ctx.static_files[url] = file_path
 	ctx.static_mime_types[url] = mime_type
+}
+
+pub fn (mut ctx Context) error(s string) {
+	ctx.form_error = s
 }
 
 

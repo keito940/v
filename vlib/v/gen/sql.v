@@ -5,6 +5,7 @@ module gen
 import v.ast
 import strings
 import v.table
+import v.util
 
 // pg,mysql etc
 const (
@@ -26,16 +27,18 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	g.writeln(';')
 	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("')
 	if node.kind == .insert {
-		g.write('insert into `$node.table_name` (')
-	} else {
-		g.write('update `$node.table_name` set ')
+		g.write('INSERT INTO `${util.strip_mod_name(node.table_name)}` (')
+	} else if node.kind == .update {
+		g.write('UPDATE `${util.strip_mod_name(node.table_name)}` SET ')
+	} else if node.kind == .delete {
+		g.write('DELETE FROM `${util.strip_mod_name(node.table_name)}` ')
 	}
 	if node.kind == .insert {
 		for i, field in node.fields {
 			if field.name == 'id' {
 				continue
 			}
-			g.write(field.name)
+			g.write('`${field.name}`')
 			if i < node.fields.len - 1 {
 				g.write(', ')
 			}
@@ -59,9 +62,11 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 				g.write(', ')
 			}
 		}
-		g.write(' where ')
+		g.write(' WHERE ')
+	} else if node.kind == .delete {
+		g.write(' WHERE ')
 	}
-	if node.kind == .update {
+	if node.kind == .update || node.kind == .delete {
 		g.expr_to_sql(node.where_expr)
 	}
 	g.writeln('"));')
@@ -83,9 +88,10 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	binds := g.sql_buf.str()
 	g.sql_buf = strings.new_builder(100)
 	g.writeln(binds)
-	g.writeln('sqlite3_step($g.sql_stmt_name);')
-	g.writeln('if (strcmp(sqlite3_errmsg(${db_name}.conn), "not an error") != 0) puts(sqlite3_errmsg(${db_name}.conn)); ')
-	g.writeln('sqlite3_finalize($g.sql_stmt_name);')
+	step_res := g.new_tmp_var()
+	g.writeln('\tint $step_res = sqlite3_step($g.sql_stmt_name);')
+	g.writeln('\tif( ($step_res != SQLITE_OK) && ($step_res != SQLITE_DONE)){ puts(sqlite3_errmsg(${db_name}.conn)); }')
+	g.writeln('\tsqlite3_finalize($g.sql_stmt_name);')
 }
 
 fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
@@ -101,24 +107,24 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	```
 	*/
 	cur_line := g.go_before_stmt(0)
-	mut q := 'select '
+	mut sql_query := 'SELECT '
 	if node.is_count {
 		// `select count(*) from User`
-		q += 'count(*) from `$node.table_name`'
+		sql_query += 'COUNT(*) FROM `${util.strip_mod_name(node.table_name)}` '
 	} else {
 		// `select id, name, country from User`
 		for i, field in node.fields {
-			q += '$field.name'
+			sql_query += '`${field.name}`'
 			if i < node.fields.len - 1 {
-				q += ', '
+				sql_query += ', '
 			}
 		}
-		q += ' from `$node.table_name`'
+		sql_query += ' FROM `${util.strip_mod_name(node.table_name)}`'
 	}
 	if node.has_where {
-		q += ' where '
+		sql_query += ' WHERE '
 	}
-	// g.write('${dbtype}__DB_q_int(*(${dbtype}__DB*)${node.db_var_name}.data, tos_lit("$q')
+	// g.write('${dbtype}__DB_q_int(*(${dbtype}__DB*)${node.db_var_name}.data, tos_lit("$sql_query')
 	g.sql_stmt_name = g.new_tmp_var()
 	db_name := g.new_tmp_var()
 	g.writeln('\n\t// sql select')
@@ -126,18 +132,30 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	g.write('${dbtype}__DB $db_name = ') // $node.db_var_name;')
 	g.expr(node.db_expr)
 	g.writeln(';')
-	// g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt(*(${dbtype}__DB*)${node.db_var_name}.data, tos_lit("$q')
-	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("$q')
+	// g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt(*(${dbtype}__DB*)${node.db_var_name}.data, tos_lit("$sql_query')
+	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("')
+	g.write(sql_query)
 	if node.has_where && node.where_expr is ast.InfixExpr {
 		g.expr_to_sql(node.where_expr)
 	}
-	g.write(' order by id ')
+	if node.has_order {
+		g.write(' ORDER BY ')
+		g.sql_side = .left
+		g.expr_to_sql(node.order_expr)
+		if node.has_desc {
+			g.write(' DESC ')
+		}
+	} else {
+		g.write(' ORDER BY id ')
+	}
 	if node.has_limit {
-		g.write(' limit ')
+		g.write(' LIMIT ')
+		g.sql_side = .right
 		g.expr_to_sql(node.limit_expr)
 	}
 	if node.has_offset {
-		g.write(' offset ')
+		g.write(' OFFSET ')
+		g.sql_side = .right
 		g.expr_to_sql(node.offset_expr)
 	}
 	g.writeln('"));')
@@ -145,7 +163,9 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	binds := g.sql_buf.str()
 	g.sql_buf = strings.new_builder(100)
 	g.writeln(binds)
-	g.writeln('if (strcmp(sqlite3_errmsg(${db_name}.conn), "not an error") != 0) puts(sqlite3_errmsg(${db_name}.conn)); ')
+	binding_res := g.new_tmp_var()
+	g.writeln('int $binding_res = sqlite3_extended_errcode(${db_name}.conn);')
+	g.writeln('if ($binding_res != SQLITE_OK) { puts(sqlite3_errmsg(${db_name}.conn)); }')
 	//
 	if node.is_count {
 		g.writeln('$cur_line ${dbtype}__get_int_from_stmt($g.sql_stmt_name);')
@@ -166,8 +186,11 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 			//
 			sym := g.table.get_type_symbol(array_info.elem_type)
 			info := sym.info as table.Struct
-			for field in info.fields {
+			for i, field in info.fields {
 				g.zero_struct_field(field)
+				if i != info.fields.len-1 {
+					g.write(', ')
+				}
 			}
 			g.writeln('};')
 		} else {
@@ -178,8 +201,11 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 			// by the db engine.
 			sym := g.table.get_type_symbol(node.typ)
 			info := sym.info as table.Struct
-			for field in info.fields {
+			for i, field in info.fields {
 				g.zero_struct_field(field)
+				if i != info.fields.len-1 {
+					g.write(', ')
+				}
 			}
 			g.writeln('};')
 		}
